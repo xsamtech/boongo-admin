@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <title>Test Broadcast</title>
+        <script src="https://js.pusher.com/7.2/pusher.min.js"></script>
+    </head>
+    <body>
+        <h1>Test de Pusher avec Laravel</h1>
+        <div id="messages"></div>
+
+        <script>
+            // Configuration Pusher
+            const pusher = new Pusher("39cd87aabfcac5d515e8", {
+            cluster: "mt1",
+            forceTLS: true
+            });
+
+            // Abonnement au canal
+            const channel = pusher.subscribe("chat.1"); // Assure-toi que tu broadcastes bien sur "chat.1"
+
+            // Réception de l’événement
+            channel.bind("App\\Events\\MessageSent", function(data) {
+            console.log("Réception du message :", data);
+            const messagesDiv = document.getElementById("messages");
+            messagesDiv.innerHTML += `<p><strong>${data.user.firstname}</strong> : ${data.message_content}</p>`;
+            });
+        </script>
+    </body>
+</html>

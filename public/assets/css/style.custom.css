@@ -1,0 +1,309 @@
+/*
+    Custom styles
+
+    Author : Xanders Samoth | https://team.xsamtech.com/xanderssamoth
+*/
+
+/* typography */
+pre {
+    font-family: inherit !important;
+    font-size: inherit !important;
+    white-space: pre-wrap;
+    /* css-3 */
+    white-space: -moz-pre-wrap;
+    /* Mozilla, since 1999 */
+    white-space: -pre-wrap;
+    /* Opera 4-6 */
+    white-space: -o-pre-wrap;
+    /* Opera 7 */
+    word-wrap: break-word;
+    /* Internet Explorer 5.5+ */
+}
+
+a {
+    color: var(--bs-primary);
+}
+
+textarea {
+    resize: none;
+}
+
+/********** Custom colors **********/
+/* background */
+.bng-bg-danger {
+    background-color: #db3337 !important;
+}
+
+.bng-bg-danger-transparent {
+    background-color: rgba(219, 51, 55, 0.5) !important;
+}
+
+.bng-bg-primary {
+    background-color: #3a7ced !important;
+}
+
+.bng-bg-primary-transparent {
+    background-color: rgba(58, 124, 237, 0.5) !important;
+}
+
+a.bng-bg-primary-transparent:hover {
+    transition: .3s;
+    background-color: rgba(58, 124, 237, 0.7) !important;
+}
+
+.bng-bg-warning {
+    background-color: #ecad26 !important;
+}
+
+.bng-bg-warning-transparent {
+    background-color: rgba(236, 173, 38, 0.5) !important;
+}
+
+.bng-bg-success {
+    background-color: #2ba14d !important;
+}
+
+.bng-bg-success-transparent {
+    background-color: rgba(43, 161, 77, 0.5) !important;
+}
+
+.bng-bg-secondary {
+    background-color: #878787 !important;
+}
+
+.bng-bg-secondary-transparent {
+    background-color: rgba(135, 135, 135, 0.5) !important;
+}
+
+/* button */
+.bng-btn-danger {
+    background-color: #db3337 !important;
+    color: #fff !important;
+    border-color: #cf2f32 !important;
+}
+
+.bng-btn-danger:hover {
+    background-color: #fff !important;
+    color: #000 !important;
+    border-color: #fff !important;
+}
+
+.bng-btn-primary {
+    background-color: #3a7ced !important;
+    color: #fff !important;
+    border-color: #3576e6 !important;
+}
+
+.bng-btn-primary:hover {
+    background-color: #878787 !important;
+    border-color: #878787 !important;
+}
+
+.bng-btn-warning {
+    background-color: #ecad26 !important;
+    color: #000 !important;
+    border-color: #eaaa21 !important;
+}
+
+.bng-btn-warning:hover {
+    background-color: #878787 !important;
+    color: #fff !important;
+    border-color: #878787 !important;
+}
+
+.bng-btn-success {
+    background-color: #2ba14d !important;
+    color: #fff !important;
+    border-color: #269846 !important;
+}
+
+.bng-btn-success:hover {
+    background-color: #878787 !important;
+    color: #fff !important;
+    border-color: #878787 !important;
+}
+
+.bng-btn-secondary {
+    background-color: #cfcfcf !important;
+    color: #000 !important;
+    border-color: #cfcfcf !important;
+}
+
+.bng-btn-secondary:hover {
+    background-color: #878787 !important;
+    border-color: #878787 !important;
+}
+
+/* text */
+.bng-text-danger {
+    color: #db3337 !important;
+}
+
+a:hover.bng-text-danger {
+    color: #cf2f32 !important;
+}
+
+.bng-text-primary {
+    color: #3a7ced !important;
+}
+
+a:hover.bng-text-primary {
+    color: #3576e6 !important;
+}
+
+.bng-text-warning {
+    color: #ecad26 !important;
+}
+
+a:hover.bng-text-warning {
+    color: #eaaa21 !important;
+}
+
+.bng-text-success {
+    color: #2ba14d !important;
+}
+
+a:hover.bng-text-success {
+    color: #269846 !important;
+}
+
+.bng-text-secondary {
+    color: #757575 !important;
+}
+
+a:hover.bng-text-secondary {
+    color: #636363 !important;
+}
+
+/* paragraph */
+.bng-line-height-1 {
+    line-height: 1;
+}
+
+.bng-line-height-1_4 {
+    line-height: 1.4;
+}
+
+.bng-line-height-1_45 {
+    line-height: 1.45;
+}
+
+.bng-line-height-1_5 {
+    line-height: 1.5;
+}
+
+/********** Custom bootstrap components **********/
+/* button */
+.btn {
+    font-size: 11pt;
+}
+
+/* stretched link */
+.card-body+.stretched-link::after {
+    background-color: rgba(70, 100, 150, 0.2) !important;
+    opacity: 0;
+    transition: .3s;
+}
+
+.card-body+.stretched-link.changed::after {
+    opacity: 1;
+}
+
+
+/* A modal over another modal */
+.modal:nth-of-type(even) {
+    z-index: 1052 !important;
+}
+
+.modal-backdrop.show:nth-of-type(even) {
+    z-index: 1051 !important;
+}
+
+/********** Miscellaneous **********/
+.d-none {
+    display: none;
+}
+
+.d-inline-block {
+    display: inline-block;
+}
+
+.d-block {
+    display: block;
+}
+
+/* From electro template */
+.header-logo .logo {
+    margin-top: 10px;
+}
+
+@media only screen and (max-width: 500px) {
+    .header-logo .logo {
+        margin-top: 10px;
+        margin-bottom: 10px;
+    }
+}
+
+@media screen and (max-width: 370px) {
+    #top-header .top-contact {
+        display: none;
+    }
+}
+
+/* Ajax loading bar */
+.loader {
+    margin: 0 auto;
+    border-radius: 10px;
+    border: 4px solid transparent;
+    position: relative;
+    padding: 1px;
+}
+
+.loader:before {
+    content: '';
+    border: 1px solid #0d6efd;
+    border-radius: 10px;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    bottom: -4px;
+    left: -4px;
+}
+
+.loader .loaderBar {
+    position: absolute;
+    border-radius: 10px;
+    top: 0;
+    right: 100%;
+    bottom: 0;
+    left: 0;
+    background: #0d6efd;
+    width: 0;
+    animation: borealisBar 2s linear infinite;
+}
+
+@keyframes borealisBar {
+    0% {
+        left: 0%;
+        right: 100%;
+        width: 0%;
+    }
+
+    10% {
+        left: 0%;
+        right: 75%;
+        width: 25%;
+    }
+
+    90% {
+        right: 0%;
+        left: 75%;
+        width: 25%;
+    }
+
+    100% {
+        left: 100%;
+        right: 0%;
+        width: 0%;
+    }
+}
