@@ -27,8 +27,16 @@
 
     @if (!empty($meta['detail']))
         <div class="card mt-3">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
                 <h6 class="mb-0">{{ $meta['detail']['title'] ?? __('messages.labels.selection') }}</h6>
+                <div class="d-flex align-items-center gap-2">
+                    @if (!empty($meta['back_url']))
+                        <a href="{{ $meta['back_url'] }}" class="btn btn-sm btn-outline-secondary">Retour sur la liste</a>
+                    @endif
+                    @if (!empty($meta['edit_target']))
+                        <button type="button" id="adminDetailEditBtn" class="btn btn-sm btn-outline-primary">Modifier cette donnee</button>
+                    @endif
+                </div>
             </div>
             <div class="card-body">
                 <div class="row g-3">
@@ -41,6 +49,88 @@
                         </div>
                     @endforeach
                 </div>
+                @foreach (($meta['detail']['sections'] ?? []) as $section)
+                    <div class="mt-4">
+                        <h6 class="mb-2">{{ $section['title'] ?? '' }}</h6>
+                        @if (($section['kind'] ?? '') === 'list')
+                            @if (!empty($section['rows']))
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach ($section['rows'] as $item)
+                                        <span class="badge bg-light text-dark">{{ $item }}</span>
+                                    @endforeach
+                                </div>
+                            @else
+                                <p class="text-muted mb-0">Aucune donnee.</p>
+                            @endif
+                        @elseif (($section['kind'] ?? '') === 'files')
+                            @if (!empty($section['rows']))
+                                <div class="list-group">
+                                    @foreach ($section['rows'] as $f)
+                                        <a href="{{ $f['url'] ?: '#' }}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <span class="text-truncate">{{ $f['name'] }}</span>
+                                            <span class="badge bg-soft-primary text-primary">{{ $f['type'] }}</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @else
+                                <p class="text-muted mb-0">Aucun fichier.</p>
+                            @endif
+                        @elseif (($section['kind'] ?? '') === 'works')
+                            @if (!empty($section['rows']))
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Titre</th>
+                                                <th>Type</th>
+                                                <th>Prix</th>
+                                                <th>Devise</th>
+                                                <th>Etat</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($section['rows'] as $i => $row)
+                                                <tr>
+                                                    <td>{{ $i + 1 }}</td>
+                                                    <td>{{ $row['title'] ?? '-' }}</td>
+                                                    <td>{{ $row['type'] ?? '-' }}</td>
+                                                    <td>{{ $row['price'] ?? '-' }}</td>
+                                                    <td>{{ $row['currency'] ?? '-' }}</td>
+                                                    <td>
+                                                        @php
+                                                            $detailWorkOptions = $meta['work_status_options'] ?? [];
+                                                            $selectedKey = (string) ($row['_status_id'] ?? '');
+                                                            $currentStatus = $detailWorkOptions[$selectedKey] ?? ['label' => ($row['_status_name'] ?? '-'), 'color' => ($row['_status_color'] ?? 'secondary')];
+                                                        @endphp
+                                                        <div class="dropdown">
+                                                            <button class="badge border-0 dropdown-toggle badge-{{ e($currentStatus['color'] ?? 'secondary') }}" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">
+                                                                {{ $currentStatus['label'] ?? '-' }}
+                                                            </button>
+                                                            <ul class="dropdown-menu">
+                                                                @foreach ($detailWorkOptions as $statusId => $statusOption)
+                                                                    <li><a href="#" class="dropdown-item admin-status-option" data-kind="work" data-id="{{ $row['id'] }}" data-status-id="{{ $statusId }}">{{ $statusOption['label'] }}</a></li>
+                                                                @endforeach
+                                                            </ul>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        @if (!empty($row['_view_url']))
+                                                            <a href="{{ $row['_view_url'] }}" class="link-primary"><i class="feather-eye"></i></a>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @else
+                                <p class="text-muted mb-0">Aucune oeuvre.</p>
+                            @endif
+                        @endif
+                    </div>
+                @endforeach
             </div>
         </div>
     @endif
@@ -265,10 +355,11 @@
                                         @php
                                             $workForm = $meta['work_form_options'] ?? [];
                                         @endphp
-                                        <form id="adminAjaxForm" action="{{ $form['action'] }}" method="{{ $form['method'] ?? 'POST' }}" enctype="multipart/form-data">
+                                        <form id="adminAjaxForm" action="{{ $form['action'] }}" method="{{ $form['method'] ?? 'POST' }}" enctype="multipart/form-data" data-default-action="{{ $form['action'] }}" data-edit-action="{{ $meta['edit_target'] ?? '' }}" data-edit-values='@json($meta['detail_form_values'] ?? [])'>
                                             @csrf
                                             <div id="adminAjaxSuccess" class="alert alert-success d-none"></div>
                                             <div id="adminAjaxErrors" class="alert alert-danger d-none"></div>
+                                            <div id="adminAjaxModeLabel" class="alert alert-info d-none py-2">Mode mise a jour active pour la donnee selectionnee.</div>
 
                                             <div class="mb-3">
                                                 <label class="form-label">Titre de l'oeuvre</label>
@@ -377,15 +468,17 @@
                                             </div>
 
                                             <div class="d-flex justify-content-end align-items-center gap-2">
+                                                <button type="button" id="adminAjaxCancelEdit" class="btn btn-light d-none">Annuler modification</button>
                                                 <span id="adminAjaxSpinner" class="spinner-border spinner-border-sm text-primary d-none" role="status" aria-hidden="true"></span>
                                                 <button type="submit" id="adminAjaxSubmit" class="btn btn-primary">{{ $form['submit_label'] ?? __('messages.actions.save') }}</button>
                                             </div>
                                         </form>
                                     @else
-                                        <form id="adminAjaxForm" action="{{ $form['action'] }}" method="{{ $form['method'] ?? 'POST' }}">
+                                        <form id="adminAjaxForm" action="{{ $form['action'] }}" method="{{ $form['method'] ?? 'POST' }}" data-default-action="{{ $form['action'] }}" data-edit-action="{{ $meta['edit_target'] ?? '' }}" data-edit-values='@json($meta['detail_form_values'] ?? [])'>
                                             @csrf
                                             <div id="adminAjaxSuccess" class="alert alert-success d-none"></div>
                                             <div id="adminAjaxErrors" class="alert alert-danger d-none"></div>
+                                            <div id="adminAjaxModeLabel" class="alert alert-info d-none py-2">Mode mise a jour active pour la donnee selectionnee.</div>
                                             @foreach ($form['fields'] as $field)
                                                 <div class="mb-3">
                                                     <label class="form-label">{{ $field['label'] }}</label>
@@ -397,6 +490,7 @@
                                                 </div>
                                             @endforeach
                                             <div class="d-flex justify-content-end align-items-center gap-2">
+                                                <button type="button" id="adminAjaxCancelEdit" class="btn btn-light d-none">Annuler modification</button>
                                                 <span id="adminAjaxSpinner" class="spinner-border spinner-border-sm text-primary d-none" role="status" aria-hidden="true"></span>
                                                 <button type="submit" id="adminAjaxSubmit" class="btn btn-primary">{{ $form['submit_label'] ?? __('messages.actions.save') }}</button>
                                             </div>
@@ -519,6 +613,9 @@
                 const successBox = document.getElementById('adminAjaxSuccess');
                 const spinner = document.getElementById('adminAjaxSpinner');
                 const submitBtn = document.getElementById('adminAjaxSubmit');
+                const editBtn = document.getElementById('adminDetailEditBtn');
+                const cancelEditBtn = document.getElementById('adminAjaxCancelEdit');
+                const modeLabel = document.getElementById('adminAjaxModeLabel');
                 const paidFields = document.getElementById('workPaidFields');
                 const paidYes = document.getElementById('workPaidYes');
                 const paidNo = document.getElementById('workPaidNo');
@@ -526,6 +623,54 @@
                 const filesInput = document.getElementById('workFilesInput');
                 const filesPreview = document.getElementById('workFilesPreview');
                 const categoryChecks = Array.from(document.querySelectorAll('.work-category-check'));
+                const defaultAction = ajaxForm.getAttribute('data-default-action') || ajaxForm.action;
+                const editAction = ajaxForm.getAttribute('data-edit-action') || '';
+                const editValuesRaw = ajaxForm.getAttribute('data-edit-values') || '{}';
+                const initialSubmitLabel = submitBtn ? submitBtn.textContent : '';
+                let editValues = {};
+                try { editValues = JSON.parse(editValuesRaw); } catch (_) { editValues = {}; }
+
+                const applyEditValues = (values) => {
+                    Object.keys(values || {}).forEach((name) => {
+                        const value = values[name];
+                        const checkboxes = ajaxForm.querySelectorAll(`input[type="checkbox"][name="${name}[]"], input[type="checkbox"][name="${name}"]`);
+                        if (checkboxes && checkboxes.length > 0) {
+                            const selected = Array.isArray(value) ? value.map((v) => String(v)) : [String(value ?? '')];
+                            checkboxes.forEach((el) => { el.checked = selected.includes(String(el.value)); });
+                            return;
+                        }
+                        const radio = ajaxForm.querySelectorAll(`input[type="radio"][name="${name}"]`);
+                        if (radio && radio.length > 0) {
+                            radio.forEach((el) => { el.checked = String(el.value) === String(value); });
+                            return;
+                        }
+                        const input = ajaxForm.querySelector(`[name="${name}"]`);
+                        if (input) input.value = value ?? '';
+                    });
+                    if (paidYes && paidNo) togglePaidFields();
+                };
+
+                const setEditMode = (enabled) => {
+                    if (!editAction) return;
+                    ajaxForm.action = enabled ? editAction : defaultAction;
+                    if (submitBtn) submitBtn.textContent = enabled ? 'Mettre a jour' : initialSubmitLabel;
+                    if (cancelEditBtn) cancelEditBtn.classList.toggle('d-none', !enabled);
+                    if (modeLabel) modeLabel.classList.toggle('d-none', !enabled);
+                };
+
+                if (editBtn && editAction) {
+                    editBtn.addEventListener('click', () => {
+                        setEditMode(true);
+                        applyEditValues(editValues);
+                    });
+                }
+                if (cancelEditBtn) {
+                    cancelEditBtn.addEventListener('click', () => {
+                        ajaxForm.reset();
+                        if (paidYes && paidNo) togglePaidFields();
+                        setEditMode(false);
+                    });
+                }
 
                 const togglePaidFields = () => {
                     if (!paidFields) return;
@@ -642,8 +787,10 @@
                         syncFileInput();
                         renderFiles();
                     }
+                    setEditMode(false);
                     if (spinner) spinner.classList.add('d-none');
                     if (submitBtn) submitBtn.disabled = false;
+                    window.setTimeout(() => window.location.reload(), 700);
                 });
             }
 

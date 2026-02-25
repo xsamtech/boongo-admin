@@ -64,6 +64,8 @@ class AdminController extends Controller
     public function reportReasonEntityDatas($entity, $id, Request $request) { return $this->renderAdminPage($entity === 'reported' ? 'report_reason_reported' : 'report_reason_entity', ['entity' => $entity, 'selectedId' => (int) $id], $request); }
     public function subscription(Request $request) { return $this->renderAdminPage('subscription', [], $request); }
     public function subscriptionDatas($id, Request $request) { return $this->renderAdminPage('subscription', ['selectedId' => (int) $id], $request); }
+    public function organizations(Request $request) { return $this->renderAdminPage('organization', [], $request); }
+    public function organizationsDatas($id, Request $request) { return $this->renderAdminPage('organization', ['selectedId' => (int) $id], $request); }
     public function work(Request $request) { return $this->renderAdminPage('work', [], $request); }
     public function workDatas($id, Request $request) { return $this->renderAdminPage('work', ['selectedId' => (int) $id], $request); }
     public function users(Request $request) { return $this->renderAdminPage('users', [], $request); }
@@ -80,6 +82,7 @@ class AdminController extends Controller
             : $this->usersByRole([$role])->where('id', '<>', auth()->id())->latest()->limit(20)->get();
         $table = $this->userRows($users, app()->getLocale());
         $table['rows'] = $this->attachRowActions('users', $table['rows']);
+        $table = $this->applyDisplayIndex($table);
         return response()->json($table);
     }
 
@@ -117,6 +120,7 @@ class AdminController extends Controller
             'report_reason_reported' => [__('messages.nav.reported_elements'), __('messages.pages.report_reason_reported')],
             'report_reason_entity' => [__('messages.nav.report_reason'), __('messages.pages.report_reason')],
             'subscription' => [__('messages.nav.subscription'), __('messages.pages.subscription')],
+            'organization' => [__('messages.nav.organization'), __('messages.pages.organization')],
             'work' => [__('messages.nav.work'), __('messages.pages.work')],
             'users' => [__('messages.nav.users'), __('messages.pages.users')],
             'users_admin' => [__('messages.nav.users'), __('messages.pages.users')],
@@ -133,9 +137,44 @@ class AdminController extends Controller
         ];
         $q = trim((string) (($request?->get('q')) ?? ''));
         [$cards, $table, $meta] = $this->buildPageData($pageKey, $payload, $q, $request);
+        if (!empty($payload['selectedId'])) {
+            $meta['back_url'] = $this->backUrlForPage($pageKey, $payload, $request);
+        }
         [$title, $description] = $titles[$pageKey] ?? [__('messages.pages.default_title'), __('messages.pages.default_desc')];
 
         $form = $this->formForPage($pageKey);
+        if (!empty($payload['selectedId']) && !empty($form)) {
+            $meta['edit_target'] = $this->updateUrlForPage($pageKey, (int) $payload['selectedId'], $payload);
+            $model = $this->resolveModelForPage($pageKey, (int) $payload['selectedId'], $payload);
+            if (!empty($model) && !empty($form['fields'])) {
+                $meta['detail_form_values'] = collect($form['fields'])->mapWithKeys(function ($field) use ($model) {
+                    $name = $field['name'] ?? null;
+                    if (empty($name)) return [];
+                    $value = $model->{$name} ?? '';
+                    if (is_array($value)) $value = $value['fr'] ?? ($value['en'] ?? '');
+                    return [$name => $value];
+                })->toArray();
+            }
+            if ($pageKey === 'work' && $model instanceof Work) {
+                $seconds = is_null($model->media_length) ? null : (int) $model->media_length;
+                $meta['detail_form_values'] = [
+                    'work_title' => $model->work_title ?? '',
+                    'work_content' => $model->work_content ?? '',
+                    'work_url' => $model->work_url ?? '',
+                    'media_length' => is_null($seconds) ? '' : sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60),
+                    'author' => $model->author ?? '',
+                    'editor' => $model->editor ?? '',
+                    'is_public' => (string) ($model->is_public ?? 1),
+                    'consultation_price' => $model->consultation_price ?? '',
+                    'currency_id' => $model->currency_id ?? '',
+                    'type_id' => $model->type_id ?? '',
+                    'status_id' => $model->status_id ?? '',
+                    'user_id' => $model->user_id ?? '',
+                    'organization_id' => $model->organization_id ?? '',
+                    'categories_ids' => $model->categories->pluck('id')->map(fn ($x) => (string) $x)->values()->toArray(),
+                ];
+            }
+        }
         return view('admin.section', compact('pageKey', 'title', 'description', 'payload', 'cards', 'table', 'meta', 'form') + ['searchQuery' => $q]);
     }
 
@@ -189,6 +228,20 @@ class AdminController extends Controller
         } elseif ($key === 'subscription') {
             $table['columns'] = ['id', 'heures', 'prix', 'devise', 'type', 'categorie'];
             $table['rows'] = Subscription::with(['currency', 'type', 'category'])->latest()->limit(120)->get()->map(fn($s) => ['id' => (string) $s->id, 'heures' => (string) ($s->number_of_hours ?? 0), 'prix' => is_null($s->price) ? '-' : (string) $s->price, 'devise' => $s->currency?->currency_acronym ?? '-', 'type' => $s->type ? $this->t($s->type, 'type_name', $locale) : '-', 'categorie' => $s->category ? $this->t($s->category, 'category_name', $locale) : '-'])->toArray();
+        } elseif ($key === 'organization') {
+            $table['columns'] = ['id', 'nom', 'acronyme', 'email', 'telephone', 'site', 'type', 'etat', 'oeuvres'];
+            $table['rows'] = Organization::with(['type', 'status'])->withCount('works')->latest()->limit(120)->get()->map(fn($o) => [
+                'id' => (string) $o->id,
+                'nom' => (string) ($o->org_name ?? '-'),
+                'acronyme' => (string) ($o->org_acronym ?? '-'),
+                'email' => (string) ($o->email ?? '-'),
+                'telephone' => (string) ($o->phone ?? '-'),
+                'site' => (string) ($o->website_url ?? '-'),
+                'type' => $o->type ? $this->t($o->type, 'type_name', $locale) : '-',
+                'etat' => $o->status ? $this->t($o->status, 'status_name', $locale) : '-',
+                'oeuvres' => (string) $o->works_count,
+            ])->toArray();
+            $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
         } elseif ($key === 'work') {
             $table['columns'] = ['id', 'titre', 'auteur', 'type', 'prix', 'devise', 'etat'];
             $table['rows'] = Work::with(['user_owner', 'type', 'currency', 'status'])->latest()->limit(120)->get()->map(fn($w) => [
@@ -214,6 +267,7 @@ class AdminController extends Controller
             }
             $meta['role_select_options'] = Role::orderBy('id')->pluck('role_name', 'id')->toArray();
             $meta['status_select_options'] = $this->statusOptionsForPage('users', $locale);
+            $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
             if ($key === 'users_partner') $meta['quick_links'] = [['label' => 'Codes d activation', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'partner', 'id' => $payload['selectedId'] ?? 0, 'section' => 'activation-codes']], ['label' => 'Membres', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'partner', 'id' => $payload['selectedId'] ?? 0, 'section' => 'members']]];
             if ($key === 'users_publisher') $meta['quick_links'] = [['label' => 'Oeuvres', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'publisher', 'id' => $payload['selectedId'] ?? 0, 'section' => 'works']], ['label' => 'Abonnes', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'publisher', 'id' => $payload['selectedId'] ?? 0, 'section' => 'members']]];
         } elseif ($key === 'users_partner_activation_codes') {
@@ -223,12 +277,14 @@ class AdminController extends Controller
             $table = $this->userRows(User::with(['roles', 'country', 'status'])->whereNotNull('promo_code')->orWhere('is_promoted', 1)->latest()->limit(160)->get(), $locale);
             $meta['role_select_options'] = Role::orderBy('id')->pluck('role_name', 'id')->toArray();
             $meta['status_select_options'] = $this->statusOptionsForPage('users', $locale);
+            $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
         } elseif ($key === 'users_publisher_works') {
             $id = (int) ($payload['selectedId'] ?? 0); $table['columns'] = ['id', 'titre', 'type', 'prix', 'devise', 'date'];
             $table['rows'] = Work::with(['type', 'currency'])->where('user_id', $id)->latest()->limit(160)->get()->map(fn($w) => ['id' => (string) $w->id, 'titre' => $w->work_title ?? '-', 'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-', 'prix' => is_null($w->consultation_price) ? '-' : (string) $w->consultation_price, 'devise' => $w->currency?->currency_acronym ?? '-', 'date' => optional($w->created_at)->format('Y-m-d H:i')])->toArray();
         } elseif ($key === 'users_publisher_members') {
             $id = (int) ($payload['selectedId'] ?? 0); $table['columns'] = ['id', 'membre', 'email', 'ville', 'nombre_achats'];
             $table['rows'] = DB::table('cart_work')->join('carts', 'cart_work.cart_id', '=', 'carts.id')->join('users', 'carts.user_id', '=', 'users.id')->join('works', 'cart_work.work_id', '=', 'works.id')->where('works.user_id', $id)->select('users.id', 'users.firstname', 'users.lastname', 'users.email', 'users.city', DB::raw('COUNT(*) AS purchases'))->groupBy('users.id', 'users.firstname', 'users.lastname', 'users.email', 'users.city')->orderByDesc('purchases')->limit(160)->get()->map(fn($r) => ['id' => (string) $r->id, 'membre' => trim(($r->firstname ?? '') . ' ' . ($r->lastname ?? '')) ?: ('User #' . $r->id), 'email' => $r->email ?? '-', 'ville' => $r->city ?? '-', 'nombre_achats' => (string) $r->purchases])->toArray();
+            $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
         } elseif ($key === 'notifications') {
             $notifications = Notification::with(['from_user', 'type', 'work', 'like.for_work'])
                 ->where('to_user_id', auth()->id())
@@ -261,6 +317,7 @@ class AdminController extends Controller
         if (!empty($table['rows'])) {
             $table['rows'] = $this->attachRowActions($key, $table['rows']);
             [$table['rows'], $meta['pagination']] = $this->paginateRows($table['rows'], 20, $request?->integer('page', 1) ?? 1);
+            $table = $this->applyDisplayIndex($table, $meta['pagination'] ?? null);
         }
 
         if (!empty($payload['selectedId'])) {
@@ -315,6 +372,7 @@ class AdminController extends Controller
             'group' => $base + ['title' => __('messages.forms.group.title'), 'action' => route('admin.group.home'), 'fields' => [['name' => 'group_name', 'label' => __('messages.forms.group.group_name'), 'type' => 'text', 'required' => true], ['name' => 'group_description', 'label' => __('messages.forms.group.group_description'), 'type' => 'textarea']]],
             'report_reason' => $base + ['title' => __('messages.forms.report_reason.title'), 'action' => route('admin.report_reason.home'), 'fields' => [['name' => 'reason_content', 'label' => __('messages.forms.report_reason.reason_content'), 'type' => 'text', 'required' => true], ['name' => 'reports_count', 'label' => __('messages.forms.report_reason.reports_count'), 'type' => 'number', 'required' => true], ['name' => 'blocked_for', 'label' => __('messages.forms.report_reason.blocked_for'), 'type' => 'number', 'required' => true], ['name' => 'entity', 'label' => __('messages.forms.report_reason.entity'), 'type' => 'text']]],
             'subscription' => $base + ['title' => __('messages.forms.subscription.title'), 'action' => route('admin.subscription.home'), 'fields' => [['name' => 'number_of_hours', 'label' => __('messages.forms.subscription.number_of_hours'), 'type' => 'number'], ['name' => 'price', 'label' => __('messages.forms.subscription.price'), 'type' => 'number', 'step' => '0.01'], ['name' => 'currency_id', 'label' => __('messages.forms.subscription.currency_id'), 'type' => 'number'], ['name' => 'type_id', 'label' => __('messages.forms.subscription.type_id'), 'type' => 'number'], ['name' => 'category_id', 'label' => __('messages.forms.subscription.category_id'), 'type' => 'number']]],
+            'organization' => $base + ['title' => __('messages.forms.organization.title'), 'action' => route('admin.organizations.home'), 'fields' => [['name' => 'org_name', 'label' => __('messages.forms.organization.org_name'), 'type' => 'text', 'required' => true], ['name' => 'org_acronym', 'label' => __('messages.forms.organization.org_acronym'), 'type' => 'text'], ['name' => 'email', 'label' => __('messages.forms.organization.email'), 'type' => 'email'], ['name' => 'phone', 'label' => __('messages.forms.organization.phone'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.organization.website_url'), 'type' => 'text']]],
             'work' => $base + ['title' => __('messages.forms.work.title'), 'action' => route('admin.work.home'), 'fields' => [['name' => 'work_title', 'label' => __('messages.forms.work.work_title'), 'type' => 'text', 'required' => true], ['name' => 'type_id', 'label' => __('messages.forms.work.type_id'), 'type' => 'number', 'required' => true], ['name' => 'user_id', 'label' => __('messages.forms.work.user_id'), 'type' => 'number'], ['name' => 'author', 'label' => __('messages.forms.work.author'), 'type' => 'text']]],
             default => null,
         };
@@ -336,50 +394,66 @@ class AdminController extends Controller
 
     private function detailForPage(string $pageKey, int $id, string $locale, array $payload = []): ?array
     {
-        $model = match ($pageKey) {
-            'country' => Country::find($id),
-            'currency' => Currency::find($id),
-            'currency_rate' => CurrenciesRate::with(['from_currency', 'to_currency'])->find($id),
-            'role' => Role::find($id),
-            'group' => Group::find($id),
-            'group_category' => Category::with('group')->find($id),
-            'group_type' => Type::with('group')->find($id),
-            'group_state' => Status::with('group')->find($id),
-            'report_reason' => ReportReason::find($id),
-            'report_reason_reported' => ToxicContent::with(['report_reason', 'user'])->find($id),
-            'subscription' => Subscription::with(['currency', 'type', 'category'])->find($id),
-            'work', 'users_publisher_works' => Work::with(['user_owner', 'type', 'status', 'currency'])->find($id),
-            'users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher', 'users_partner_members', 'users_publisher_members' => User::with(['roles', 'country', 'status'])->find($id),
-            'users_partner_activation_codes' => ActivationCode::with('user')->find($id),
-            default => null,
-        };
+        $model = $this->resolveModelForPage($pageKey, $id, $payload);
 
         if (!$model) return null;
 
         if ($model instanceof User) {
+            $items = $this->scalarDetailItems($model, ['remember_token']);
+            $items['Roles'] = $model->roles->pluck('role_name')->implode(', ') ?: '-';
+            $items['Etat'] = $model->status ? $this->t($model->status, 'status_name', $locale) : '-';
+            $works = $this->detailWorkRows(
+                Work::with(['status', 'type', 'currency'])->where('user_id', $model->id)->latest()->get(),
+                $locale
+            );
             return [
                 'title' => __('messages.pages.users') . ' #' . $id,
-                'items' => [
-                    'ID' => $model->id,
-                    'Nom' => $this->userLabel($model),
-                    'Email' => $model->email ?? '-',
-                    'Ville' => $model->city ?? '-',
-                    'Roles' => $model->roles->pluck('role_name')->implode(', ') ?: '-',
-                    'Etat' => $model->status ? $this->t($model->status, 'status_name', $locale) : '-',
+                'items' => $items,
+                'sections' => [
+                    ['kind' => 'works', 'title' => 'Oeuvres de cet utilisateur', 'rows' => $works],
                 ],
             ];
         }
 
         if ($model instanceof Work) {
+            $items = $this->scalarDetailItems($model);
+            $items['Type'] = $model->type ? $this->t($model->type, 'type_name', $locale) : '-';
+            $items['Etat'] = $model->status ? $this->t($model->status, 'status_name', $locale) : '-';
+            $items['Devise'] = $model->currency?->currency_acronym ?? '-';
+            $items['Publieur'] = $this->userLabel($model->user_owner);
+            if (!is_null($model->media_length)) {
+                $seconds = (int) $model->media_length;
+                $items['Duree'] = sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+            }
+            $categories = $model->categories->map(fn ($c) => $this->t($c, 'category_name', $locale))->filter()->values()->toArray();
+            $files = $model->files()->with('type')->latest()->get()->map(function ($f) use ($locale) {
+                return [
+                    'name' => trim((string) ($f->file_name ?? '-')),
+                    'type' => $f->type ? $this->t($f->type, 'type_name', $locale) : '-',
+                    'url' => (string) ($f->file_url ?? ''),
+                ];
+            })->values()->toArray();
             return [
                 'title' => __('messages.nav.work') . ' #' . $id,
-                'items' => [
-                    'ID' => $model->id,
-                    'Titre' => $model->work_title ?? '-',
-                    'Auteur' => $this->userLabel($model->user_owner),
-                    'Type' => $model->type ? $this->t($model->type, 'type_name', $locale) : '-',
-                    'Etat' => $model->status ? $this->t($model->status, 'status_name', $locale) : '-',
-                    'Prix' => (string) ($model->consultation_price ?? '-'),
+                'items' => $items,
+                'sections' => [
+                    ['kind' => 'list', 'title' => 'Categories', 'rows' => $categories],
+                    ['kind' => 'files', 'title' => 'Fichiers associes', 'rows' => $files],
+                ],
+            ];
+        }
+
+        if ($model instanceof Organization) {
+            $items = $this->scalarDetailItems($model);
+            $items['Type'] = $model->type ? $this->t($model->type, 'type_name', $locale) : '-';
+            $items['Etat'] = $model->status ? $this->t($model->status, 'status_name', $locale) : '-';
+            $items['Proprietaire'] = $this->userLabel($model->user_owner);
+            $works = $this->detailWorkRows($model->works, $locale);
+            return [
+                'title' => 'Organisation #' . $id,
+                'items' => $items,
+                'sections' => [
+                    ['kind' => 'works', 'title' => 'Oeuvres de cette organisation', 'rows' => $works],
                 ],
             ];
         }
@@ -392,6 +466,59 @@ class AdminController extends Controller
         }
 
         return ['title' => 'ID #' . $id, 'items' => array_slice($items, 0, 12, true)];
+    }
+
+    private function scalarDetailItems($model, array $exclude = []): array
+    {
+        $items = [];
+        foreach ($model->toArray() as $k => $v) {
+            if (in_array($k, $exclude, true)) continue;
+            if (is_array($v)) continue;
+            if (is_scalar($v) || is_null($v)) {
+                $label = strtoupper(str_replace('_', ' ', $k));
+                $items[$label] = (string) ($v ?? '-');
+            }
+        }
+        return $items;
+    }
+
+    private function detailWorkRows($works, string $locale): array
+    {
+        return collect($works)->map(function ($w) use ($locale) {
+            return [
+                'id' => (int) $w->id,
+                'title' => (string) ($w->work_title ?? '-'),
+                'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-',
+                'price' => is_null($w->consultation_price) ? '-' : (string) $w->consultation_price,
+                'currency' => (string) ($w->currency?->currency_acronym ?? '-'),
+                '_status_id' => $w->status_id,
+                '_status_name' => $w->status ? $this->t($w->status, 'status_name', $locale) : '-',
+                '_status_color' => $this->normalizeStatusColor($w->status?->color),
+                '_view_url' => route('admin.work.datas', ['id' => (int) $w->id]),
+            ];
+        })->values()->toArray();
+    }
+
+    private function resolveModelForPage(string $pageKey, int $id, array $payload = [])
+    {
+        return match ($pageKey) {
+            'country' => Country::find($id),
+            'currency' => Currency::find($id),
+            'currency_rate' => CurrenciesRate::with(['from_currency', 'to_currency'])->find($id),
+            'role' => Role::find($id),
+            'group' => Group::find($id),
+            'group_category' => Category::with('group')->find($id),
+            'group_type' => Type::with('group')->find($id),
+            'group_state' => Status::with('group')->find($id),
+            'report_reason' => ReportReason::find($id),
+            'report_reason_reported' => ToxicContent::with(['report_reason', 'user'])->find($id),
+            'subscription' => Subscription::with(['currency', 'type', 'category'])->find($id),
+            'work', 'users_publisher_works' => Work::with(['user_owner', 'type', 'status', 'currency', 'categories'])->find($id),
+            'organization' => Organization::with(['type', 'status', 'user_owner', 'works.status', 'works.type', 'works.currency'])->find($id),
+            'users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher', 'users_partner_members', 'users_publisher_members' => User::with(['roles', 'country', 'status'])->find($id),
+            'users_partner_activation_codes' => ActivationCode::with('user')->find($id),
+            default => null,
+        };
     }
 
     private function paginateRows(array $rows, int $perPage, int $currentPage): array
@@ -423,6 +550,26 @@ class AdminController extends Controller
         }, $rows);
     }
 
+    private function applyDisplayIndex(array $table, ?LengthAwarePaginator $pagination = null): array
+    {
+        if (empty($table['columns']) || empty($table['rows'])) return $table;
+        $idColPos = array_search('id', $table['columns'], true);
+        if ($idColPos === false) return $table;
+
+        $table['columns'][$idColPos] = 'index';
+        $offset = 0;
+        if (!empty($pagination)) {
+            $offset = max(0, ($pagination->currentPage() - 1) * $pagination->perPage());
+        }
+
+        foreach ($table['rows'] as $i => $row) {
+            $table['rows'][$i]['_id'] = $row['id'] ?? null;
+            $table['rows'][$i]['index'] = (string) ($offset + $i + 1);
+        }
+
+        return $table;
+    }
+
     private function viewUrlForPage(string $pageKey, int $id): ?string
     {
         return match ($pageKey) {
@@ -437,6 +584,7 @@ class AdminController extends Controller
             'report_reason' => route('admin.report_reason.datas', ['id' => $id]),
             'report_reason_reported' => route('admin.report_reason.entity.datas', ['entity' => 'reported', 'id' => $id]),
             'subscription' => route('admin.subscription.datas', ['id' => $id]),
+            'organization' => route('admin.organizations.datas', ['id' => $id]),
             'work' => route('admin.work.datas', ['id' => $id]),
             'users', 'users_entity' => route('admin.users.entity.datas', ['entity' => 'member', 'id' => $id]),
             'users_admin' => route('admin.users.entity.datas', ['entity' => 'admin', 'id' => $id]),
@@ -453,6 +601,65 @@ class AdminController extends Controller
         };
     }
 
+    private function updateUrlForPage(string $pageKey, int $id, array $payload = []): ?string
+    {
+        return match ($pageKey) {
+            'country' => url('/admin/country/' . $id),
+            'currency' => url('/admin/currency/' . $id),
+            'currency_rate' => url('/admin/currency/rate/' . $id),
+            'role' => url('/admin/role/' . $id),
+            'group' => url('/admin/group/' . $id),
+            'group_category' => url('/admin/group/category/' . $id),
+            'group_type' => url('/admin/group/type/' . $id),
+            'group_state' => url('/admin/group/state/' . $id),
+            'report_reason' => url('/admin/report-reason/' . $id),
+            'report_reason_reported' => url('/admin/report-reason/reported/' . $id),
+            'subscription' => url('/admin/subscription/' . $id),
+            'organization' => url('/admin/organizations/' . $id),
+            'work' => url('/admin/work/' . $id),
+            default => null,
+        };
+    }
+
+    private function listUrlForPage(string $pageKey, array $payload = []): ?string
+    {
+        return match ($pageKey) {
+            'country' => route('admin.country.home'),
+            'currency' => route('admin.currency.home'),
+            'currency_rate' => route('admin.currency.entity.home', ['entity' => 'rate']),
+            'role' => route('admin.role.home'),
+            'group' => route('admin.group.home'),
+            'group_category' => route('admin.group.entity.home', ['entity' => 'category']),
+            'group_type' => route('admin.group.entity.home', ['entity' => 'type']),
+            'group_state' => route('admin.group.entity.home', ['entity' => 'state']),
+            'report_reason' => route('admin.report_reason.home'),
+            'report_reason_reported' => route('admin.report_reason.entity.home', ['entity' => 'reported']),
+            'subscription' => route('admin.subscription.home'),
+            'organization' => route('admin.organizations.home'),
+            'work' => route('admin.work.home'),
+            'users' => route('admin.users.home'),
+            'users_admin' => route('admin.users.entity.home', ['entity' => 'admin']),
+            'users_manager' => route('admin.users.entity.home', ['entity' => 'manager']),
+            'users_partner' => route('admin.users.entity.home', ['entity' => 'partner']),
+            'users_sponsor' => route('admin.users.entity.home', ['entity' => 'sponsor']),
+            'users_publisher' => route('admin.users.entity.home', ['entity' => 'publisher']),
+            'users_partner_activation_codes' => route('admin.users.entity.section.home', ['entity' => 'partner', 'id' => (int) ($payload['selectedId'] ?? 0), 'section' => 'activation-codes']),
+            'users_partner_members' => route('admin.users.entity.section.home', ['entity' => 'partner', 'id' => (int) ($payload['selectedId'] ?? 0), 'section' => 'members']),
+            'users_publisher_works' => route('admin.users.entity.section.home', ['entity' => 'publisher', 'id' => (int) ($payload['selectedId'] ?? 0), 'section' => 'works']),
+            'users_publisher_members' => route('admin.users.entity.section.home', ['entity' => 'publisher', 'id' => (int) ($payload['selectedId'] ?? 0), 'section' => 'members']),
+            default => null,
+        };
+    }
+
+    private function backUrlForPage(string $pageKey, array $payload = [], ?Request $request = null): ?string
+    {
+        $previous = url()->previous();
+        if (!empty($previous) && $previous !== $request?->fullUrl() && str_contains($previous, '/admin/')) {
+            return $previous;
+        }
+        return $this->listUrlForPage($pageKey, $payload);
+    }
+
     private function deleteEntityForPage(string $pageKey): ?string
     {
         return match ($pageKey) {
@@ -467,6 +674,7 @@ class AdminController extends Controller
             'report_reason' => 'report_reason',
             'report_reason_reported' => 'toxic_content',
             'subscription' => 'subscription',
+            'organization' => 'organization',
             'work', 'users_publisher_works' => 'work',
             'users_partner_activation_codes' => 'activation_code',
             'notifications' => 'notification',
@@ -514,6 +722,7 @@ class AdminController extends Controller
             'report_reason' => ReportReason::class,
             'toxic_content' => ToxicContent::class,
             'subscription' => Subscription::class,
+            'organization' => Organization::class,
             'work' => Work::class,
             'activation_code' => ActivationCode::class,
             'notification' => Notification::class,
@@ -743,7 +952,13 @@ class AdminController extends Controller
         $country = Country::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_country_success'), ['id' => $country->id]);
     }
-    public function updateCountry(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateCountry(Request $request, $id) {
+        $v = Validator::make($request->all(), ['country_name' => 'required|string|max:255', 'country_phone_code' => 'nullable|string|max:45', 'country_lang_code' => 'nullable|string|max:45']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $country = Country::findOrFail($id);
+        $country->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $country->id]);
+    }
     public function addCurrency(Request $request) {
         $v = Validator::make($request->all(), ['currency_name' => 'required|string|max:255', 'currency_acronym' => 'required|string|max:45', 'currency_icon' => 'nullable|string|max:255']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
@@ -751,7 +966,14 @@ class AdminController extends Controller
         $currency = Currency::create($data);
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_currency_success'), ['id' => $currency->id]);
     }
-    public function updateCurrency(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateCurrency(Request $request, $id) {
+        $v = Validator::make($request->all(), ['currency_name' => 'required|string|max:255', 'currency_acronym' => 'required|string|max:45', 'currency_icon' => 'nullable|string|max:255']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $data = $v->validated(); $data['currency_name'] = ['fr' => $data['currency_name'], 'en' => $data['currency_name']];
+        $currency = Currency::findOrFail($id);
+        $currency->update($data);
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $currency->id]);
+    }
     public function addCurrencyEntity(Request $request, $entity) {
         if ($entity !== 'rate') return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'));
         $v = Validator::make($request->all(), ['from_currency_id' => 'required|integer|exists:currencies,id', 'to_currency_id' => 'required|integer|exists:currencies,id|different:from_currency_id', 'rate' => 'required|numeric|min:0.00001']);
@@ -759,14 +981,27 @@ class AdminController extends Controller
         $rate = CurrenciesRate::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_currencies_rate_success'), ['id' => $rate->id]);
     }
-    public function updateCurrencyEntity(Request $request, $entity, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateCurrencyEntity(Request $request, $entity, $id) {
+        if ($entity !== 'rate') return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'));
+        $v = Validator::make($request->all(), ['from_currency_id' => 'required|integer|exists:currencies,id', 'to_currency_id' => 'required|integer|exists:currencies,id|different:from_currency_id', 'rate' => 'required|numeric|min:0.00001']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $rate = CurrenciesRate::findOrFail($id);
+        $rate->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $rate->id]);
+    }
     public function addRole(Request $request) {
         $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'role_description' => 'nullable|string']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
         $role = Role::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_role_success'), ['id' => $role->id]);
     }
-    public function updateRole(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateRole(Request $request, $id) {
+        $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'role_description' => 'nullable|string']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $role = Role::findOrFail($id);
+        $role->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $role->id]);
+    }
     public function addRoleEntity(Request $request, $entity) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function updateRoleEntity(Request $request, $entity, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function addGroup(Request $request) {
@@ -775,7 +1010,13 @@ class AdminController extends Controller
         $group = Group::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_group_success'), ['id' => $group->id]);
     }
-    public function updateGroup(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateGroup(Request $request, $id) {
+        $v = Validator::make($request->all(), ['group_name' => 'required|string|max:255', 'group_description' => 'nullable|string']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $group = Group::findOrFail($id);
+        $group->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $group->id]);
+    }
     public function addGroupEntity(Request $request, $entity) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function updateGroupEntity(Request $request, $entity, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function addReportReason(Request $request) {
@@ -785,7 +1026,14 @@ class AdminController extends Controller
         $reason = ReportReason::create($data);
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_report_reason_success'), ['id' => $reason->id]);
     }
-    public function updateReportReason(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateReportReason(Request $request, $id) {
+        $v = Validator::make($request->all(), ['reason_content' => 'required|string|max:255', 'reports_count' => 'required|integer|min:1', 'blocked_for' => 'required|integer|min:1', 'entity' => 'nullable|in:work,user,message']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $data = $v->validated(); $data['reason_content'] = ['fr' => $data['reason_content'], 'en' => $data['reason_content']];
+        $reason = ReportReason::findOrFail($id);
+        $reason->update($data);
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $reason->id]);
+    }
     public function addReportReasonEntity(Request $request, $entity) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function updateReportReasonEntity(Request $request, $entity, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function addSubscription(Request $request) {
@@ -794,8 +1042,114 @@ class AdminController extends Controller
         $subscription = Subscription::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_subscription_success'), ['id' => $subscription->id]);
     }
-    public function updateSubscription(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
-    public function updateWork(Request $request, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function updateSubscription(Request $request, $id) {
+        $v = Validator::make($request->all(), ['number_of_hours' => 'nullable|integer|min:0', 'price' => 'nullable|numeric|min:0', 'currency_id' => 'nullable|integer|exists:currencies,id', 'type_id' => 'nullable|integer|exists:types,id', 'category_id' => 'nullable|integer|exists:categories,id']);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $subscription = Subscription::findOrFail($id);
+        $subscription->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $subscription->id]);
+    }
+    public function addOrganization(Request $request) {
+        $v = Validator::make($request->all(), [
+            'org_name' => 'required|string|max:65535',
+            'org_acronym' => 'nullable|string|max:255',
+            'org_description' => 'nullable|string',
+            'id_number' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'p_o_box' => 'nullable|string|max:45',
+            'legal_status' => 'nullable|string|max:255',
+            'year_of_creation' => 'nullable|string|max:45',
+            'website_url' => 'nullable|string|max:65535',
+            'cover_url' => 'nullable|string|max:65535',
+            'type_id' => 'nullable|integer|exists:types,id',
+            'status_id' => 'nullable|integer|exists:statuses,id',
+            'user_id' => 'nullable|integer|exists:users,id',
+        ]);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $organization = Organization::create($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $organization->id]);
+    }
+    public function updateOrganization(Request $request, $id) {
+        $v = Validator::make($request->all(), [
+            'org_name' => 'required|string|max:65535',
+            'org_acronym' => 'nullable|string|max:255',
+            'org_description' => 'nullable|string',
+            'id_number' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'p_o_box' => 'nullable|string|max:45',
+            'legal_status' => 'nullable|string|max:255',
+            'year_of_creation' => 'nullable|string|max:45',
+            'website_url' => 'nullable|string|max:65535',
+            'cover_url' => 'nullable|string|max:65535',
+            'type_id' => 'nullable|integer|exists:types,id',
+            'status_id' => 'nullable|integer|exists:statuses,id',
+            'user_id' => 'nullable|integer|exists:users,id',
+        ]);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $organization = Organization::findOrFail($id);
+        $organization->update($v->validated());
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $organization->id]);
+    }
+    public function updateWork(Request $request, $id) {
+        $workTypeGroupId = $this->findGroupIdByKeywords(['type d oeuvre', 'type oeuvre']);
+        $workCategoryGroupId = $this->findGroupIdByKeywords(['categorie pour oeuvre', 'categorie oeuvre']);
+        $workStatusGroupId = $this->statusGroupIdForPage('work');
+        $v = Validator::make($request->all(), [
+            'work_title' => 'required|string|max:255',
+            'work_content' => 'required|string',
+            'work_url' => 'nullable|string|max:500',
+            'media_length' => ['nullable', 'regex:/^\d{2}:\d{2}:\d{2}$/'],
+            'author' => 'nullable|string|max:255',
+            'editor' => 'nullable|string|max:255',
+            'is_public' => 'required|in:0,1',
+            'consultation_price' => 'required_if:is_public,0|nullable|numeric|min:0.01',
+            'currency_id' => 'required_if:is_public,0|nullable|integer|exists:currencies,id',
+            'type_id' => 'required|integer|exists:types,id',
+            'categories_ids' => 'required|array|min:1',
+            'categories_ids.*' => 'integer|exists:categories,id',
+            'status_id' => 'required|integer|exists:statuses,id',
+            'user_id' => 'nullable|integer|exists:users,id',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+        ]);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $data = $v->validated();
+        $mediaLengthSeconds = null;
+        if (!empty($data['media_length'])) {
+            [$hh, $mm, $ss] = array_map('intval', explode(':', $data['media_length']));
+            if ($mm > 59 || $ss > 59) return $this->ajaxValidationOrRedirect($request, ['media_length' => ['Le format de la longueur doit etre HH:MM:SS valide.']]);
+            $mediaLengthSeconds = ($hh * 3600) + ($mm * 60) + $ss;
+        }
+        if (!empty($workTypeGroupId) && !Type::whereKey($data['type_id'])->where('group_id', $workTypeGroupId)->exists()) return $this->ajaxValidationOrRedirect($request, ['type_id' => ['Type invalide pour les oeuvres.']]);
+        if (!empty($workCategoryGroupId)) {
+            $validCategoryCount = Category::whereIn('id', $data['categories_ids'])->where('group_id', $workCategoryGroupId)->count();
+            if ($validCategoryCount !== count($data['categories_ids'])) return $this->ajaxValidationOrRedirect($request, ['categories_ids' => ['Categorie invalide pour les oeuvres.']]);
+        }
+        if (!empty($workStatusGroupId) && !Status::whereKey($data['status_id'])->where('group_id', $workStatusGroupId)->exists()) return $this->ajaxValidationOrRedirect($request, ['status_id' => ['Etat invalide pour les oeuvres.']]);
+        $work = Work::findOrFail($id);
+        $workUrl = trim((string) ($data['work_url'] ?? ''));
+        $work->update([
+            'work_title' => $data['work_title'],
+            'work_content' => $data['work_content'],
+            'work_url' => $workUrl !== '' ? $workUrl : null,
+            'video_source' => $workUrl !== '' ? 'YouTube' : 'AWS',
+            'media_length' => $mediaLengthSeconds,
+            'author' => $data['author'] ?? null,
+            'editor' => $data['editor'] ?? null,
+            'is_public' => (int) $data['is_public'],
+            'consultation_price' => ((int) $data['is_public'] === 0) ? ($data['consultation_price'] ?? null) : null,
+            'currency_id' => ((int) $data['is_public'] === 0) ? ($data['currency_id'] ?? null) : null,
+            'type_id' => $data['type_id'],
+            'status_id' => $data['status_id'],
+            'user_id' => $data['user_id'] ?? $work->user_id ?? auth()->id(),
+            'organization_id' => $data['organization_id'] ?? null,
+        ]);
+        $work->categories()->sync($data['categories_ids']);
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $work->id]);
+    }
 
     public function addWork(Request $request)
     {

@@ -88,6 +88,7 @@
             ['key' => 'report_reason', 'label' => __('messages.nav.report_reason'), 'route' => 'admin.report_reason.home', 'icon' => 'feather-alert-circle'],
             ['key' => 'report_reason_reported', 'label' => __('messages.nav.reported_elements'), 'route' => 'admin.report_reason.entity.home', 'params' => ['entity' => 'reported'], 'icon' => 'feather-archive'],
             ['key' => 'subscription', 'label' => __('messages.nav.subscription'), 'route' => 'admin.subscription.home', 'icon' => 'feather-credit-card'],
+            ['key' => 'organization', 'label' => __('messages.nav.organization'), 'route' => 'admin.organizations.home', 'icon' => 'feather-briefcase'],
             ['key' => 'work', 'label' => __('messages.nav.work'), 'route' => 'admin.work.home', 'icon' => 'feather-book-open'],
             ['key' => 'users', 'label' => __('messages.nav.users'), 'route' => 'admin.users.home', 'icon' => 'feather-users'],
             ['key' => 'users_partner', 'label' => __('messages.nav.partner'), 'route' => 'admin.users.entity.home', 'params' => ['entity' => 'partner'], 'icon' => 'feather-link-2'],

@@ -100,6 +100,10 @@ Route::middleware(['auth', 'role:Administrateur'])->group(function () {
     Route::post('/admin/subscription', [AdminController::class, 'addSubscription']);
     Route::get('/admin/subscription/{id}', [AdminController::class, 'subscriptionDatas'])->whereNumber('id')->name('admin.subscription.datas');
     Route::post('/admin/subscription/{id}', [AdminController::class, 'updateSubscription'])->whereNumber('id');
+    Route::get('/admin/organizations', [AdminController::class, 'organizations'])->name('admin.organizations.home');
+    Route::post('/admin/organizations', [AdminController::class, 'addOrganization']);
+    Route::get('/admin/organizations/{id}', [AdminController::class, 'organizationsDatas'])->whereNumber('id')->name('admin.organizations.datas');
+    Route::post('/admin/organizations/{id}', [AdminController::class, 'updateOrganization'])->whereNumber('id');
     Route::get('/admin/work', [AdminController::class, 'work'])->name('admin.work.home');
     Route::post('/admin/work', [AdminController::class, 'addWork']);
     Route::get('/admin/work/{id}', [AdminController::class, 'workDatas'])->whereNumber('id')->name('admin.work.datas');
