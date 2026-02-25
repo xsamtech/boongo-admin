@@ -190,9 +190,22 @@ class AdminController extends Controller
             $table['columns'] = ['id', 'heures', 'prix', 'devise', 'type', 'categorie'];
             $table['rows'] = Subscription::with(['currency', 'type', 'category'])->latest()->limit(120)->get()->map(fn($s) => ['id' => (string) $s->id, 'heures' => (string) ($s->number_of_hours ?? 0), 'prix' => is_null($s->price) ? '-' : (string) $s->price, 'devise' => $s->currency?->currency_acronym ?? '-', 'type' => $s->type ? $this->t($s->type, 'type_name', $locale) : '-', 'categorie' => $s->category ? $this->t($s->category, 'category_name', $locale) : '-'])->toArray();
         } elseif ($key === 'work') {
-            $table['columns'] = ['id', 'titre', 'auteur', 'type', 'prix', 'devise', 'etat', 'etat_edit'];
-            $table['rows'] = Work::with(['user_owner', 'type', 'currency', 'status'])->latest()->limit(120)->get()->map(fn($w) => ['id' => (string) $w->id, 'titre' => $w->work_title ?? '-', 'auteur' => $this->userLabel($w->user_owner), 'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-', 'prix' => is_null($w->consultation_price) ? '-' : (string) $w->consultation_price, 'devise' => $w->currency?->currency_acronym ?? '-', 'etat' => $w->status ? $this->t($w->status, 'status_name', $locale) : '-', 'etat_edit' => $w->status_id, '_work_status_id' => $w->status_id])->toArray();
-            $meta['work_status_options'] = Status::orderBy('id')->get()->mapWithKeys(fn($s) => [$s->id => $this->t($s, 'status_name', $locale)])->toArray();
+            $table['columns'] = ['id', 'titre', 'auteur', 'type', 'prix', 'devise', 'etat'];
+            $table['rows'] = Work::with(['user_owner', 'type', 'currency', 'status'])->latest()->limit(120)->get()->map(fn($w) => [
+                'id' => (string) $w->id,
+                'titre' => $w->work_title ?? '-',
+                'auteur' => $this->userLabel($w->user_owner),
+                'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-',
+                'prix' => is_null($w->consultation_price) ? '-' : (string) $w->consultation_price,
+                'devise' => $w->currency?->currency_acronym ?? '-',
+                'etat' => $w->status ? $this->t($w->status, 'status_name', $locale) : '-',
+                '_work_status_id' => $w->status_id,
+                '_status_id' => $w->status_id,
+                '_status_name' => $w->status ? $this->t($w->status, 'status_name', $locale) : '-',
+                '_status_color' => $this->normalizeStatusColor($w->status?->color),
+            ])->toArray();
+            $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
+            $meta['work_form_options'] = $this->workFormOptions($locale);
         } elseif (in_array($key, ['users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher'])) {
             $users = $key === 'users' ? User::with(['roles', 'country', 'status'])->where('id', '<>', auth()->id())->latest()->limit(160)->get() : $this->usersByRole($key === 'users_admin' ? ['admin', 'administrator'] : ($key === 'users_manager' ? ['manager'] : ($key === 'users_partner' ? ['partner'] : ($key === 'users_sponsor' ? ['sponsor'] : ['publisher', 'publieur']))))->where('id', '<>', auth()->id())->latest()->limit(160)->get();
             $table = $this->userRows($users, $locale);
@@ -200,7 +213,7 @@ class AdminController extends Controller
                 $meta['role_options'] = Role::orderBy('role_name')->pluck('role_name')->toArray();
             }
             $meta['role_select_options'] = Role::orderBy('id')->pluck('role_name', 'id')->toArray();
-            $meta['status_select_options'] = Status::orderBy('id')->get()->mapWithKeys(fn($s) => [$s->id => $this->t($s, 'status_name', $locale)])->toArray();
+            $meta['status_select_options'] = $this->statusOptionsForPage('users', $locale);
             if ($key === 'users_partner') $meta['quick_links'] = [['label' => 'Codes d activation', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'partner', 'id' => $payload['selectedId'] ?? 0, 'section' => 'activation-codes']], ['label' => 'Membres', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'partner', 'id' => $payload['selectedId'] ?? 0, 'section' => 'members']]];
             if ($key === 'users_publisher') $meta['quick_links'] = [['label' => 'Oeuvres', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'publisher', 'id' => $payload['selectedId'] ?? 0, 'section' => 'works']], ['label' => 'Abonnes', 'route' => 'admin.users.entity.section.home', 'params' => ['entity' => 'publisher', 'id' => $payload['selectedId'] ?? 0, 'section' => 'members']]];
         } elseif ($key === 'users_partner_activation_codes') {
@@ -208,6 +221,8 @@ class AdminController extends Controller
             $table['rows'] = ActivationCode::with('user')->where(function (Builder $q) use ($id) { $q->where('for_partner_id', $id)->orWhere('user_id', $id); })->latest()->limit(160)->get()->map(fn($a) => ['id' => (string) $a->id, 'code' => $a->code, 'actif' => $a->is_active ? 'Oui' : 'Non', 'partenaire' => (string) ($a->for_partner_id ?? '-'), 'utilisateur' => $this->userLabel($a->user), 'date' => optional($a->created_at)->format('Y-m-d H:i')])->toArray();
         } elseif ($key === 'users_partner_members') {
             $table = $this->userRows(User::with(['roles', 'country', 'status'])->whereNotNull('promo_code')->orWhere('is_promoted', 1)->latest()->limit(160)->get(), $locale);
+            $meta['role_select_options'] = Role::orderBy('id')->pluck('role_name', 'id')->toArray();
+            $meta['status_select_options'] = $this->statusOptionsForPage('users', $locale);
         } elseif ($key === 'users_publisher_works') {
             $id = (int) ($payload['selectedId'] ?? 0); $table['columns'] = ['id', 'titre', 'type', 'prix', 'devise', 'date'];
             $table['rows'] = Work::with(['type', 'currency'])->where('user_id', $id)->latest()->limit(160)->get()->map(fn($w) => ['id' => (string) $w->id, 'titre' => $w->work_title ?? '-', 'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-', 'prix' => is_null($w->consultation_price) ? '-' : (string) $w->consultation_price, 'devise' => $w->currency?->currency_acronym ?? '-', 'date' => optional($w->created_at)->format('Y-m-d H:i')])->toArray();
@@ -265,22 +280,25 @@ class AdminController extends Controller
     private function userRows($users, string $locale): array
     {
         return [
-            'columns' => ['id', 'photo', 'nom', 'email', 'ville', 'roles', 'role_edit', 'pays', 'etat', 'etat_edit'],
+            'columns' => ['id', 'photo', 'nom', 'email', 'ville', 'role', 'pays', 'etat'],
             'rows' => $users->map(function ($u) use ($locale) {
-                $currentRole = $u->relationLoaded('roles') ? $u->roles->first() : $u->roles()->orderByPivot('created_at', 'desc')->first();
+                $roles = $u->relationLoaded('roles') ? $u->roles : $u->roles()->get();
+                $currentRole = $roles->sortByDesc(function ($role) {
+                    return $role->pivot?->created_at ?? $role->id;
+                })->first();
                 return [
                     'id' => (string) $u->id,
                     'photo' => $this->normalizeImageUrl($u->avatar_url),
                     'nom' => $this->userLabel($u),
                     'email' => $u->email ?? '-',
                     'ville' => $u->city ?? '-',
-                    'roles' => ($u->relationLoaded('roles') ? $u->roles->pluck('role_name')->implode(', ') : $u->roles()->pluck('role_name')->implode(', ')) ?: '-',
-                    'role_edit' => $currentRole?->id,
+                    'role' => $currentRole?->role_name ?? '-',
                     'pays' => $u->country?->country_name ?? '-',
                     'etat' => $u->status ? $this->t($u->status, 'status_name', $locale) : '-',
-                    'etat_edit' => $u->status_id,
                     '_role_id' => $currentRole?->id,
                     '_status_id' => $u->status_id,
+                    '_status_name' => $u->status ? $this->t($u->status, 'status_name', $locale) : '-',
+                    '_status_color' => $this->normalizeStatusColor($u->status?->color),
                 ];
             })->toArray()
         ];
@@ -537,12 +555,16 @@ class AdminController extends Controller
     {
         $v = Validator::make($request->all(), ['status_id' => 'required|integer|exists:statuses,id']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $statusId = (int) $v->validated()['status_id'];
+        if (!$this->isAllowedStatusForPage($statusId, 'users')) {
+            return response()->json(['success' => false, 'message' => __('messages.errors.generic')], 422);
+        }
 
         $user = User::findOrFail($id);
         if ($user->id === auth()->id()) {
             return response()->json(['success' => false, 'message' => __('messages.errors.generic')], 422);
         }
-        $user->status_id = $v->validated()['status_id'];
+        $user->status_id = $statusId;
         $user->save();
         return response()->json(['success' => true]);
     }
@@ -551,10 +573,168 @@ class AdminController extends Controller
     {
         $v = Validator::make($request->all(), ['status_id' => 'required|integer|exists:statuses,id']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+        $statusId = (int) $v->validated()['status_id'];
+        if (!$this->isAllowedStatusForPage($statusId, 'work')) {
+            return response()->json(['success' => false, 'message' => __('messages.errors.generic')], 422);
+        }
         $work = Work::findOrFail($id);
-        $work->status_id = $v->validated()['status_id'];
+        $work->status_id = $statusId;
         $work->save();
         return response()->json(['success' => true]);
+    }
+
+    private function statusOptionsForPage(string $pageKey, string $locale): array
+    {
+        $groupId = $this->statusGroupIdForPage($pageKey);
+        $query = Status::query()->orderBy('id');
+        if (!empty($groupId)) {
+            $query->where('group_id', $groupId);
+        }
+
+        return $query->get()->mapWithKeys(function (Status $s) use ($locale) {
+            return [
+                $s->id => [
+                    'label' => $this->t($s, 'status_name', $locale),
+                    'color' => $this->normalizeStatusColor($s->color),
+                ],
+            ];
+        })->toArray();
+    }
+
+    private function isAllowedStatusForPage(int $statusId, string $pageKey): bool
+    {
+        $groupId = $this->statusGroupIdForPage($pageKey);
+        if (empty($groupId)) return Status::whereKey($statusId)->exists();
+        return Status::whereKey($statusId)->where('group_id', $groupId)->exists();
+    }
+
+    private function statusGroupIdForPage(string $pageKey): ?int
+    {
+        $needles = match ($pageKey) {
+            'work' => ['etat de l oeuvre', 'etat oeuvre'],
+            'users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher' => ['etat de l utilisateur', 'etat utilisateur'],
+            default => [],
+        };
+
+        return $this->findGroupIdByKeywords($needles);
+    }
+
+    private function findGroupIdByKeywords(array $needles): ?int
+    {
+        if (empty($needles)) return null;
+        $groups = Group::query()->select(['id', 'group_name'])->get();
+        foreach ($groups as $group) {
+            $name = Str::of((string) $group->group_name)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', ' ')->trim()->value();
+            foreach ($needles as $needle) {
+                if (str_contains($name, $needle)) return (int) $group->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function findStatusIdByNameNeedles(array $needles, ?int $groupId = null): ?int
+    {
+        $statuses = Status::query()->select(['id', 'status_name', 'group_id'])->when($groupId, fn ($q) => $q->where('group_id', $groupId))->get();
+        foreach ($statuses as $status) {
+            $name = Str::of($this->t($status, 'status_name', 'fr'))->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', ' ')->trim()->value();
+            foreach ($needles as $needle) {
+                if (str_contains($name, $needle)) return (int) $status->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function workFormOptions(string $locale): array
+    {
+        $workTypeGroupId = $this->findGroupIdByKeywords(['type d oeuvre', 'type oeuvre']);
+        $workCategoryGroupId = $this->findGroupIdByKeywords(['categorie pour oeuvre', 'categorie oeuvre']);
+        $workStatusGroupId = $this->statusGroupIdForPage('work');
+        $declassifiedStatusId = $this->findStatusIdByNameNeedles(['declassee', 'declass'], $workStatusGroupId);
+        if (empty($declassifiedStatusId) && !empty($workStatusGroupId)) {
+            $declassifiedStatusId = Status::where('group_id', $workStatusGroupId)->orderBy('id')->value('id');
+        }
+
+        $currencies = Currency::query()->orderBy('id')->get()->map(function ($c) use ($locale) {
+            $name = $this->t($c, 'currency_name', $locale);
+            $acronym = trim((string) ($c->currency_acronym ?? ''));
+            return ['id' => (int) $c->id, 'label' => $acronym !== '' ? ($name . ' (' . $acronym . ')') : $name];
+        })->values()->toArray();
+
+        $typesQuery = Type::query()->orderBy('id');
+        if (!empty($workTypeGroupId)) $typesQuery->where('group_id', $workTypeGroupId);
+        $types = $typesQuery->get()->map(fn ($t) => ['id' => (int) $t->id, 'label' => $this->t($t, 'type_name', $locale)])->values()->toArray();
+
+        $categoriesQuery = Category::query()->orderBy('id');
+        if (!empty($workCategoryGroupId)) $categoriesQuery->where('group_id', $workCategoryGroupId);
+        $categories = $categoriesQuery->get()->map(fn ($c) => ['id' => (int) $c->id, 'label' => $this->t($c, 'category_name', $locale)])->values()->toArray();
+
+        $publishers = User::query()
+            ->whereHas('roles', function (Builder $q) {
+                $q->whereRaw('LOWER(role_name) LIKE ?', ['%publisher%'])
+                    ->orWhereRaw('LOWER(role_name) LIKE ?', ['%publieur%']);
+            })
+            ->orderByDesc('id')
+            ->limit(300)
+            ->get()
+            ->map(fn ($u) => ['id' => (int) $u->id, 'label' => $this->userLabel($u)])
+            ->values()
+            ->toArray();
+
+        $organizations = Organization::query()
+            ->orderByDesc('id')
+            ->limit(300)
+            ->get()
+            ->map(function ($o) {
+                $name = trim((string) ($o->org_name ?? ''));
+                return ['id' => (int) $o->id, 'label' => $name !== '' ? $name : ('Organisation #' . $o->id)];
+            })
+            ->values()
+            ->toArray();
+
+        return [
+            'currencies' => $currencies,
+            'types' => $types,
+            'categories' => $categories,
+            'publishers' => $publishers,
+            'organizations' => $organizations,
+            'declassified_status_id' => $declassifiedStatusId,
+        ];
+    }
+
+    private function normalizeStatusColor(?string $color): string
+    {
+        $value = Str::of((string) $color)
+            ->lower()
+            ->trim()
+            ->replace('_', '-')
+            ->replace(' ', '-')
+            ->value();
+
+        $aliases = [
+            'grey' => 'secondary',
+            'gray' => 'secondary',
+            'red' => 'danger',
+            'green' => 'success',
+            'blue' => 'primary',
+            'yellow' => 'warning',
+            'orange' => 'warning',
+            'teal' => 'info',
+            'cyan' => 'info',
+            'black' => 'dark',
+            'white' => 'light',
+        ];
+        if (isset($aliases[$value])) {
+            return $aliases[$value];
+        }
+
+        $allowed = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark'];
+        if (in_array($value, $allowed, true)) {
+            return $value;
+        }
+
+        return 'secondary';
     }
 
     public function addCountry(Request $request) {
@@ -619,28 +799,95 @@ class AdminController extends Controller
 
     public function addWork(Request $request)
     {
+        $workTypeGroupId = $this->findGroupIdByKeywords(['type d oeuvre', 'type oeuvre']);
+        $workCategoryGroupId = $this->findGroupIdByKeywords(['categorie pour oeuvre', 'categorie oeuvre']);
+        $workStatusGroupId = $this->statusGroupIdForPage('work');
+
+        $v = Validator::make($request->all(), [
+            'work_title' => 'required|string|max:255',
+            'work_content' => 'required|string',
+            'work_url' => 'nullable|string|max:500',
+            'media_length' => ['nullable', 'regex:/^\d{2}:\d{2}:\d{2}$/' ],
+            'author' => 'nullable|string|max:255',
+            'editor' => 'nullable|string|max:255',
+            'is_public' => 'required|in:0,1',
+            'consultation_price' => 'required_if:is_public,0|nullable|numeric|min:0.01',
+            'currency_id' => 'required_if:is_public,0|nullable|integer|exists:currencies,id',
+            'type_id' => 'required|integer|exists:types,id',
+            'categories_ids' => 'required|array|min:1',
+            'categories_ids.*' => 'integer|exists:categories,id',
+            'status_id' => 'required|integer|exists:statuses,id',
+            'user_id' => 'nullable|integer|exists:users,id',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'files_urls.*' => 'file|max:512000',
+        ]);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+
+        $data = $v->validated();
+        $mediaLengthSeconds = null;
+        if (!empty($data['media_length'])) {
+            [$hh, $mm, $ss] = array_map('intval', explode(':', $data['media_length']));
+            if ($mm > 59 || $ss > 59) {
+                return $this->ajaxValidationOrRedirect($request, ['media_length' => ['Le format de la longueur doit etre HH:MM:SS valide.']]);
+            }
+            $mediaLengthSeconds = ($hh * 3600) + ($mm * 60) + $ss;
+        }
+
+        if (!empty($workTypeGroupId) && !Type::whereKey($data['type_id'])->where('group_id', $workTypeGroupId)->exists()) {
+            return $this->ajaxValidationOrRedirect($request, ['type_id' => ['Type invalide pour les oeuvres.']]);
+        }
+        if (!empty($workCategoryGroupId)) {
+            $validCategoryCount = Category::whereIn('id', $data['categories_ids'])->where('group_id', $workCategoryGroupId)->count();
+            if ($validCategoryCount !== count($data['categories_ids'])) {
+                return $this->ajaxValidationOrRedirect($request, ['categories_ids' => ['Categorie invalide pour les oeuvres.']]);
+            }
+        }
+        if (!empty($workStatusGroupId) && !Status::whereKey($data['status_id'])->where('group_id', $workStatusGroupId)->exists()) {
+            return $this->ajaxValidationOrRedirect($request, ['status_id' => ['Etat invalide pour les oeuvres.']]);
+        }
+
         $group = Group::where('group_name', 'Type de fichier')->first();
-        $image = Type::where([['type_name->fr', 'Image (Photo/VidÃ©o)'], ['group_id', $group->id]])->first();
-        $doc = Type::where([['type_name->fr', 'Document'], ['group_id', $group->id]])->first();
-        $audio = Type::where([['type_name->fr', 'Audio'], ['group_id', $group->id]])->first();
-        $inputs = ['work_title' => $request->work_title, 'work_content' => $request->work_content, 'work_url' => $request->work_url, 'video_source' => $request->video_source ?? 'AWS', 'author' => $request->author, 'editor' => $request->editor, 'is_public' => 1, 'type_id' => $request->type_id, 'status_id' => $request->status_id, 'user_id' => $request->user_id];
-        if (!$inputs['work_title']) return $this->ajaxValidationOrRedirect($request, ['work_title' => [__('validation.custom.title.required')]]);
-        if (!$inputs['type_id']) return $this->ajaxValidationOrRedirect($request, ['type_id' => [__('validation.custom.type_name.required')]]);
+        if (!$group) return $this->ajaxValidationOrRedirect($request, ['files_urls' => ['Configuration des types de fichier introuvable.']]);
+        $fileTypes = Type::query()->where('group_id', $group->id)->get();
+        $image = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'image'));
+        $doc = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'document'));
+        $audio = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'audio'));
+
+        $workUrl = trim((string) ($data['work_url'] ?? ''));
+        $inputs = [
+            'work_title' => $data['work_title'],
+            'work_content' => $data['work_content'],
+            'work_url' => $workUrl !== '' ? $workUrl : null,
+            'video_source' => $workUrl !== '' ? 'YouTube' : 'AWS',
+            'media_length' => $mediaLengthSeconds,
+            'author' => $data['author'] ?? null,
+            'editor' => $data['editor'] ?? null,
+            'is_public' => (int) $data['is_public'],
+            'consultation_price' => ((int) $data['is_public'] === 0) ? ($data['consultation_price'] ?? null) : null,
+            'currency_id' => ((int) $data['is_public'] === 0) ? ($data['currency_id'] ?? null) : null,
+            'type_id' => $data['type_id'],
+            'status_id' => $data['status_id'],
+            'user_id' => $data['user_id'] ?? auth()->id(),
+            'organization_id' => $data['organization_id'] ?? null,
+        ];
+
         $work = Work::create($inputs);
-        if ($request->categories_ids) $work->categories()->sync($request->input('categories_ids', []));
+        $work->categories()->sync($data['categories_ids']);
+
         if ($request->hasFile('files_urls')) {
             $files = $request->file('files_urls', []); $names = $request->input('files_names', []);
             foreach ($files as $k => $f) {
-                $ext = $f->getClientOriginalExtension(); $uri = ''; $typeId = null;
-                if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'avi', 'mov', 'mkv', 'webm'])) { $uri = 'images/works'; $typeId = $image->id; }
-                elseif (in_array($ext, ['pdf', 'doc', 'docx', 'txt'])) { $uri = 'documents/works'; $typeId = $doc->id; }
-                elseif (in_array($ext, ['mp3', 'wav', 'flac'])) { $uri = 'audios/works'; $typeId = $audio->id; }
+                $ext = strtolower($f->getClientOriginalExtension()); $uri = ''; $typeId = null;
+                if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'avi', 'mov', 'mkv', 'webm'])) { $uri = 'images/works'; $typeId = $image?->id; }
+                elseif (in_array($ext, ['pdf', 'doc', 'docx', 'txt'])) { $uri = 'documents/works'; $typeId = $doc?->id; }
+                elseif (in_array($ext, ['mp3', 'wav', 'flac'])) { $uri = 'audios/works'; $typeId = $audio?->id; }
                 else { return $this->handleError(__('notifications.type_is_not_file')); }
                 $clean = sanitizeFileName($f->getClientOriginalName()); $path = $uri . '/' . $work->id . '/' . $clean;
                 try { $f->storeAs($uri . '/' . $work->id, $clean, 's3'); } catch (\Throwable $th) { return $this->handleError($th, __('notifications.create_work_file_500'), 500); }
                 File::create(['file_name' => trim($names[$k] ?? $clean), 'file_url' => config('filesystems.disks.s3.url') . $path, 'type_id' => $typeId, 'work_id' => $work->id]);
             }
         }
+
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_work_success'), ['id' => $work->id]);
     }
 
@@ -660,3 +907,4 @@ class AdminController extends Controller
         return Redirect::back()->with('success_message', $message);
     }
 }
+

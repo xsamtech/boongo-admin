@@ -25,6 +25,14 @@
         .modal { z-index: 2005 !important; }
         .modal-backdrop { z-index: 2000 !important; }
         .swal2-container { z-index: 1080; }
+        .badge-primary { background-color: var(--bs-primary) !important; color: #fff !important; }
+        .badge-secondary { background-color: var(--bs-secondary) !important; color: #fff !important; }
+        .badge-success { background-color: var(--bs-success) !important; color: #fff !important; }
+        .badge-danger { background-color: var(--bs-danger) !important; color: #fff !important; }
+        .badge-warning { background-color: var(--bs-warning) !important; color: #212529 !important; }
+        .badge-info { background-color: var(--bs-info) !important; color: #fff !important; }
+        .badge-light { background-color: var(--bs-light) !important; color: #212529 !important; }
+        .badge-dark { background-color: var(--bs-dark) !important; color: #fff !important; }
         @media (min-width: 768px) {
             .admin-search-mobile-trigger { display: none !important; }
         }
