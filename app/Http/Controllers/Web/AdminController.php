@@ -14,6 +14,7 @@ use App\Models\Group;
 use App\Models\Message;
 use App\Models\Notification;
 use App\Models\Organization;
+use App\Models\Partner;
 use App\Models\Payment;
 use App\Models\ReportReason;
 use App\Models\Role;
@@ -69,8 +70,8 @@ class AdminController extends Controller
     public function work(Request $request) { return $this->renderAdminPage('work', [], $request); }
     public function workDatas($id, Request $request) { return $this->renderAdminPage('work', ['selectedId' => (int) $id], $request); }
     public function users(Request $request) { return $this->renderAdminPage('users', [], $request); }
-    public function usersEntity($entity, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity], $request); }
-    public function usersEntityDatas($entity, $id, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity, 'selectedId' => (int) $id], $request); }
+    public function usersEntity($entity, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'member' => 'users_member', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity], $request); }
+    public function usersEntityDatas($entity, $id, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'member' => 'users_member', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity, 'selectedId' => (int) $id], $request); }
     public function usersEntitySection($entity, $id, $section, Request $request) { return $this->renderAdminPage(($entity === 'partner' && $section === 'activation-codes') ? 'users_partner_activation_codes' : (($entity === 'partner' && $section === 'members') ? 'users_partner_members' : (($entity === 'publisher' && $section === 'works') ? 'users_publisher_works' : (($entity === 'publisher' && $section === 'members') ? 'users_publisher_members' : 'users_entity_section'))), ['entity' => $entity, 'selectedId' => (int) $id, 'section' => $section], $request); }
     public function notifications(Request $request) { return $this->renderAdminPage('notifications', [], $request); }
     public function messages(Request $request) { return $this->renderAdminPage('messages', [], $request); }
@@ -102,6 +103,55 @@ class AdminController extends Controller
         return response()->json(['groups' => array_values(array_filter($groups, fn($g) => count($g['items']) > 0))]);
     }
 
+    public function lookup(Request $request, string $entity)
+    {
+        $term = trim((string) $request->get('term', ''));
+        if (mb_strlen($term) < 1) return response()->json(['items' => []]);
+        $like = '%' . $term . '%';
+
+        if ($entity === 'users') {
+            $items = User::query()
+                ->where(function (Builder $q) use ($like) {
+                    $q->where('firstname', 'like', $like)
+                        ->orWhere('lastname', 'like', $like)
+                        ->orWhere('surname', 'like', $like)
+                        ->orWhere('username', 'like', $like)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('phone', 'like', $like);
+                })
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->map(fn ($user) => ['id' => (int) $user->id, 'label' => $this->userLabel($user) . ' - ' . ($user->email ?? ('#' . $user->id))])
+                ->values();
+
+            return response()->json(['items' => $items]);
+        }
+
+        if ($entity === 'organizations') {
+            $items = Organization::query()
+                ->where(function (Builder $q) use ($like) {
+                    $q->where('org_name', 'like', $like)
+                        ->orWhere('org_acronym', 'like', $like)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('phone', 'like', $like);
+                })
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->map(function ($organization) {
+                    $name = trim((string) ($organization->org_name ?? '')) ?: ('Organisation #' . $organization->id);
+                    $email = trim((string) ($organization->email ?? ''));
+                    return ['id' => (int) $organization->id, 'label' => $email !== '' ? ($name . ' - ' . $email) : $name];
+                })
+                ->values();
+
+            return response()->json(['items' => $items]);
+        }
+
+        return response()->json(['items' => []], 404);
+    }
+
     private function renderAdminPage(string $pageKey, array $payload = [], ?Request $request = null)
     {
         $titles = [
@@ -125,6 +175,7 @@ class AdminController extends Controller
             'users' => [__('messages.nav.users'), __('messages.pages.users')],
             'users_admin' => [__('messages.nav.users'), __('messages.pages.users')],
             'users_manager' => [__('messages.nav.users'), __('messages.pages.users')],
+            'users_member' => [__('messages.nav.members'), __('messages.pages.users_member')],
             'users_partner' => [__('messages.nav.partner'), __('messages.pages.users_partner')],
             'users_partner_activation_codes' => [__('messages.pages.users_partner_activation_codes_title'), __('messages.pages.users_partner_activation_codes')],
             'users_partner_members' => [__('messages.pages.users_partner_members_title'), __('messages.pages.users_partner_members')],
@@ -259,8 +310,40 @@ class AdminController extends Controller
             ])->toArray();
             $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
             $meta['work_form_options'] = $this->workFormOptions($locale);
-        } elseif (in_array($key, ['users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher'])) {
-            $users = $key === 'users' ? User::with(['roles', 'country', 'status'])->where('id', '<>', auth()->id())->latest()->limit(160)->get() : $this->usersByRole($key === 'users_admin' ? ['admin', 'administrator'] : ($key === 'users_manager' ? ['manager'] : ($key === 'users_partner' ? ['partner'] : ($key === 'users_sponsor' ? ['sponsor'] : ['publisher', 'publieur']))))->where('id', '<>', auth()->id())->latest()->limit(160)->get();
+        } elseif (in_array($key, ['users_partner', 'users_sponsor'])) {
+            $partners = Partner::query()
+                ->when($key === 'users_partner', fn ($query) => $query->whereNotNull('from_user_id'))
+                ->when($key === 'users_sponsor', fn ($query) => $query->whereNotNull('from_organization_id'))
+                ->latest()
+                ->limit(160)
+                ->get();
+            $table['columns'] = ['id', 'nom', 'type', 'provenance', 'site_web', 'date'];
+            $table['rows'] = $partners->map(function ($partner) use ($key) {
+                $source = '-';
+                if (!empty($partner->from_user_id)) {
+                    $source = $this->userLabel(User::find($partner->from_user_id));
+                } elseif (!empty($partner->from_organization_id)) {
+                    $org = Organization::find($partner->from_organization_id);
+                    $source = trim((string) ($org?->org_name ?? '')) ?: ('Organisation #' . $partner->from_organization_id);
+                }
+
+                return [
+                    'id' => (string) $partner->id,
+                    'nom' => $partner->name ?? '-',
+                    'type' => $key === 'users_sponsor' ? __('messages.nav.sponsor') : __('messages.nav.partner'),
+                    'provenance' => $source,
+                    'site_web' => $partner->website_url ?? '-',
+                    'date' => optional($partner->created_at)->format('Y-m-d H:i'),
+                ];
+            })->toArray();
+        } elseif (in_array($key, ['users', 'users_admin', 'users_manager', 'users_member', 'users_publisher'])) {
+            if ($key === 'users') {
+                $users = User::with(['roles', 'country', 'status'])->where('id', '<>', auth()->id())->latest()->limit(160)->get();
+            } elseif ($key === 'users_member') {
+                $users = $this->usersWithOnlyRole(['membre', 'member'])->where('id', '<>', auth()->id())->latest()->limit(160)->get();
+            } else {
+                $users = $this->usersByRole($key === 'users_admin' ? ['admin', 'administrator'] : ($key === 'users_manager' ? ['manager'] : ['publisher', 'publieur']))->where('id', '<>', auth()->id())->latest()->limit(160)->get();
+            }
             $table = $this->userRows($users, $locale);
             if ($key === 'users') {
                 $meta['role_options'] = Role::orderBy('role_name')->pluck('role_name')->toArray();
@@ -334,6 +417,17 @@ class AdminController extends Controller
         })->with(['roles', 'country', 'status']);
     }
 
+    private function usersWithOnlyRole(array $keywords)
+    {
+        $roleNames = array_map(fn ($keyword) => mb_strtolower($keyword), $keywords);
+
+        return User::whereHas('roles', function (Builder $q) use ($keywords) {
+            foreach ($keywords as $i => $k) { $i === 0 ? $q->whereRaw('LOWER(role_name) = ?', [mb_strtolower($k)]) : $q->orWhereRaw('LOWER(role_name) = ?', [mb_strtolower($k)]); }
+        })->whereDoesntHave('roles', function (Builder $q) use ($roleNames) {
+            $q->whereNotIn(DB::raw('LOWER(role_name)'), $roleNames);
+        })->with(['roles', 'country', 'status']);
+    }
+
     private function userRows($users, string $locale): array
     {
         return [
@@ -374,6 +468,8 @@ class AdminController extends Controller
             'subscription' => $base + ['title' => __('messages.forms.subscription.title'), 'action' => route('admin.subscription.home'), 'fields' => [['name' => 'number_of_hours', 'label' => __('messages.forms.subscription.number_of_hours'), 'type' => 'number'], ['name' => 'price', 'label' => __('messages.forms.subscription.price'), 'type' => 'number', 'step' => '0.01'], ['name' => 'currency_id', 'label' => __('messages.forms.subscription.currency_id'), 'type' => 'number'], ['name' => 'type_id', 'label' => __('messages.forms.subscription.type_id'), 'type' => 'number'], ['name' => 'category_id', 'label' => __('messages.forms.subscription.category_id'), 'type' => 'number']]],
             'organization' => $base + ['title' => __('messages.forms.organization.title'), 'action' => route('admin.organizations.home'), 'fields' => [['name' => 'org_name', 'label' => __('messages.forms.organization.org_name'), 'type' => 'text', 'required' => true], ['name' => 'org_acronym', 'label' => __('messages.forms.organization.org_acronym'), 'type' => 'text'], ['name' => 'email', 'label' => __('messages.forms.organization.email'), 'type' => 'email'], ['name' => 'phone', 'label' => __('messages.forms.organization.phone'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.organization.website_url'), 'type' => 'text']]],
             'work' => $base + ['title' => __('messages.forms.work.title'), 'action' => route('admin.work.home'), 'fields' => [['name' => 'work_title', 'label' => __('messages.forms.work.work_title'), 'type' => 'text', 'required' => true], ['name' => 'type_id', 'label' => __('messages.forms.work.type_id'), 'type' => 'number', 'required' => true], ['name' => 'user_id', 'label' => __('messages.forms.work.user_id'), 'type' => 'number'], ['name' => 'author', 'label' => __('messages.forms.work.author'), 'type' => 'text']]],
+            'users_partner' => $base + ['title' => __('messages.forms.partner.title'), 'action' => route('admin.users.entity.home', ['entity' => 'partner']), 'fields' => [['name' => 'name', 'label' => __('messages.forms.partner.name'), 'type' => 'text', 'required' => true], ['name' => 'message', 'label' => __('messages.forms.partner.message'), 'type' => 'textarea'], ['name' => 'from_user_id', 'label' => __('messages.forms.partner.from_user_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'users']), 'required' => true], ['name' => 'from_organization_id', 'label' => __('messages.forms.partner.from_organization_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'organizations']), 'required' => true], ['name' => 'image_url', 'label' => __('messages.forms.partner.image_url'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.partner.website_url'), 'type' => 'url']]],
+            'users_sponsor' => $base + ['title' => __('messages.forms.sponsor.title'), 'action' => route('admin.users.entity.home', ['entity' => 'sponsor']), 'fields' => [['name' => 'name', 'label' => __('messages.forms.partner.name'), 'type' => 'text', 'required' => true], ['name' => 'message', 'label' => __('messages.forms.partner.message'), 'type' => 'textarea'], ['name' => 'from_user_id', 'label' => __('messages.forms.partner.from_user_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'users']), 'required' => true], ['name' => 'from_organization_id', 'label' => __('messages.forms.partner.from_organization_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'organizations']), 'required' => true], ['name' => 'image_url', 'label' => __('messages.forms.partner.image_url'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.partner.website_url'), 'type' => 'url']]],
             default => null,
         };
     }
@@ -458,6 +554,22 @@ class AdminController extends Controller
             ];
         }
 
+        if ($model instanceof Partner) {
+            $items = $this->scalarDetailItems($model);
+            $items['Utilisateur'] = !empty($model->from_user_id) ? $this->userLabel(User::find($model->from_user_id)) : '-';
+            if (!empty($model->from_organization_id)) {
+                $org = Organization::find($model->from_organization_id);
+                $items['Organisation'] = trim((string) ($org?->org_name ?? '')) ?: ('Organisation #' . $model->from_organization_id);
+            } else {
+                $items['Organisation'] = '-';
+            }
+
+            return [
+                'title' => ($pageKey === 'users_sponsor' ? __('messages.nav.sponsor') : __('messages.nav.partner')) . ' #' . $id,
+                'items' => $items,
+            ];
+        }
+
         $items = [];
         foreach ($model->toArray() as $k => $v) {
             if (is_scalar($v) || is_null($v)) {
@@ -515,7 +627,8 @@ class AdminController extends Controller
             'subscription' => Subscription::with(['currency', 'type', 'category'])->find($id),
             'work', 'users_publisher_works' => Work::with(['user_owner', 'type', 'status', 'currency', 'categories'])->find($id),
             'organization' => Organization::with(['type', 'status', 'user_owner', 'works.status', 'works.type', 'works.currency'])->find($id),
-            'users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher', 'users_partner_members', 'users_publisher_members' => User::with(['roles', 'country', 'status'])->find($id),
+            'users', 'users_admin', 'users_manager', 'users_member', 'users_publisher', 'users_partner_members', 'users_publisher_members' => User::with(['roles', 'country', 'status'])->find($id),
+            'users_partner', 'users_sponsor' => Partner::find($id),
             'users_partner_activation_codes' => ActivationCode::with('user')->find($id),
             default => null,
         };
@@ -589,6 +702,7 @@ class AdminController extends Controller
             'users', 'users_entity' => route('admin.users.entity.datas', ['entity' => 'member', 'id' => $id]),
             'users_admin' => route('admin.users.entity.datas', ['entity' => 'admin', 'id' => $id]),
             'users_manager' => route('admin.users.entity.datas', ['entity' => 'manager', 'id' => $id]),
+            'users_member' => route('admin.users.entity.datas', ['entity' => 'member', 'id' => $id]),
             'users_partner' => route('admin.users.entity.datas', ['entity' => 'partner', 'id' => $id]),
             'users_sponsor' => route('admin.users.entity.datas', ['entity' => 'sponsor', 'id' => $id]),
             'users_publisher' => route('admin.users.entity.datas', ['entity' => 'publisher', 'id' => $id]),
@@ -640,6 +754,7 @@ class AdminController extends Controller
             'users' => route('admin.users.home'),
             'users_admin' => route('admin.users.entity.home', ['entity' => 'admin']),
             'users_manager' => route('admin.users.entity.home', ['entity' => 'manager']),
+            'users_member' => route('admin.users.entity.home', ['entity' => 'member']),
             'users_partner' => route('admin.users.entity.home', ['entity' => 'partner']),
             'users_sponsor' => route('admin.users.entity.home', ['entity' => 'sponsor']),
             'users_publisher' => route('admin.users.entity.home', ['entity' => 'publisher']),
@@ -676,6 +791,7 @@ class AdminController extends Controller
             'subscription' => 'subscription',
             'organization' => 'organization',
             'work', 'users_publisher_works' => 'work',
+            'users_partner', 'users_sponsor' => 'partner',
             'users_partner_activation_codes' => 'activation_code',
             'notifications' => 'notification',
             default => null,
@@ -724,6 +840,7 @@ class AdminController extends Controller
             'subscription' => Subscription::class,
             'organization' => Organization::class,
             'work' => Work::class,
+            'partner' => Partner::class,
             'activation_code' => ActivationCode::class,
             'notification' => Notification::class,
         ];
@@ -821,7 +938,7 @@ class AdminController extends Controller
     {
         $needles = match ($pageKey) {
             'work' => ['etat de l oeuvre', 'etat oeuvre'],
-            'users', 'users_admin', 'users_manager', 'users_partner', 'users_sponsor', 'users_publisher' => ['etat de l utilisateur', 'etat utilisateur'],
+            'users', 'users_admin', 'users_manager', 'users_member', 'users_partner', 'users_sponsor', 'users_publisher' => ['etat de l utilisateur', 'etat utilisateur'],
             default => [],
         };
 
@@ -1004,6 +1121,29 @@ class AdminController extends Controller
     }
     public function addRoleEntity(Request $request, $entity) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
     public function updateRoleEntity(Request $request, $entity, $id) { return Redirect::back()->with('success_message', 'Operation enregistree.'); }
+    public function addUsersEntity(Request $request, $entity)
+    {
+        if (!in_array($entity, ['partner', 'sponsor'], true)) {
+            return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'));
+        }
+
+        $rules = [
+            'name' => 'required|string|max:65535',
+            'message' => 'nullable|string',
+            'from_user_id' => 'required|integer|exists:users,id',
+            'from_organization_id' => 'required|integer|exists:organizations,id',
+            'image_url' => 'nullable|string|max:65535',
+            'website_url' => 'nullable|string|max:65535',
+        ];
+
+        $v = Validator::make($request->all(), $rules);
+        if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
+
+        $data = $v->validated();
+        $partner = Partner::create($data);
+
+        return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $partner->id]);
+    }
     public function addGroup(Request $request) {
         $v = Validator::make($request->all(), ['group_name' => 'required|string|max:255', 'group_description' => 'nullable|string']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
@@ -1261,4 +1401,3 @@ class AdminController extends Controller
         return Redirect::back()->with('success_message', $message);
     }
 }
-

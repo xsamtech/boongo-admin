@@ -113,8 +113,10 @@ Route::middleware(['auth', 'role:Administrateur'])->group(function () {
     Route::get('/admin/users/{entity}/{id}/{section}', [AdminController::class, 'usersEntitySection'])->whereNumber('id')->name('admin.users.entity.section.home');
     Route::get('/admin/users/{entity}/{id}', [AdminController::class, 'usersEntityDatas'])->whereNumber('id')->name('admin.users.entity.datas');
     Route::get('/admin/users/{entity}', [AdminController::class, 'usersEntity'])->name('admin.users.entity.home');
+    Route::post('/admin/users/{entity}', [AdminController::class, 'addUsersEntity']);
     Route::get('/admin/notifications', [AdminController::class, 'notifications'])->name('admin.notifications.home');
     Route::get('/admin/search/suggest', [AdminController::class, 'searchSuggestions'])->name('admin.search.suggest');
+    Route::get('/admin/lookup/{entity}', [AdminController::class, 'lookup'])->name('admin.lookup');
     Route::delete('/admin/delete/{entity}/{id}', [AdminController::class, 'deleteEntity'])->whereNumber('id')->name('admin.data.delete');
     Route::patch('/admin/users/{id}/role', [AdminController::class, 'updateUserRole'])->whereNumber('id')->name('admin.users.update_role');
     Route::patch('/admin/users/{id}/status', [AdminController::class, 'updateUserStatus'])->whereNumber('id')->name('admin.users.update_status');
@@ -130,7 +132,7 @@ Route::middleware(['auth', 'role:Administrateur,Manager'])->group(function () {
 | ROUTES FOR "Manager"
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'role:Manager'])->group(function () {
+Route::middleware(['auth', 'role:Administrateur,Manager'])->group(function () {
     Route::get('/manager', [ManagerController::class, 'dashboard'])->name('manager.home');
     Route::get('/manager/members', [ManagerController::class, 'members'])->name('manager.members.home');
     Route::post('/manager/members', [ManagerController::class, 'addMembers']);

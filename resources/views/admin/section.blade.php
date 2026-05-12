@@ -484,6 +484,12 @@
                                                     <label class="form-label">{{ $field['label'] }}</label>
                                                     @if (($field['type'] ?? 'text') === 'textarea')
                                                         <textarea name="{{ $field['name'] }}" class="form-control" {{ !empty($field['required']) ? 'required' : '' }}></textarea>
+                                                    @elseif (($field['type'] ?? 'text') === 'autocomplete')
+                                                        <div class="position-relative">
+                                                            <input type="text" class="form-control admin-autocomplete" data-target="{{ $field['name'] }}" data-lookup-url="{{ $field['lookup'] }}" placeholder="{{ __('messages.search.placeholder') }}" autocomplete="off" {{ !empty($field['required']) ? 'required' : '' }} />
+                                                            <input type="hidden" name="{{ $field['name'] }}" id="hidden_{{ $field['name'] }}" class="admin-autocomplete-hidden" data-label="{{ $field['label'] }}" {{ !empty($field['required']) ? 'data-required=1' : '' }} />
+                                                            <div class="dropdown-menu w-100 admin-autocomplete-results" style="display:none; max-height: 240px; overflow:auto;"></div>
+                                                        </div>
                                                     @else
                                                         <input type="{{ $field['type'] ?? 'text' }}" name="{{ $field['name'] }}" class="form-control" {{ !empty($field['step']) ? 'step=' . $field['step'] : '' }} {{ !empty($field['required']) ? 'required' : '' }} />
                                                     @endif
@@ -536,6 +542,52 @@
                 const current = options[key] || { label: fallbackLabel || '-', color: fallbackColor || 'secondary' };
                 const items = Object.keys(options).map((statusId) => `<li><a href="#" class="dropdown-item admin-status-option" data-kind="${kind}" data-id="${rowId}" data-status-id="${statusId}">${escapeHtml(options[statusId].label || '-')}</a></li>`).join('');
                 return `<div class="dropdown"><button class="badge border-0 dropdown-toggle badge-${escapeHtml(current.color || 'secondary')}" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">${escapeHtml(current.label || '-')}</button><ul class="dropdown-menu">${items}</ul></div>`;
+            };
+
+            const bindAutocompleteFields = () => {
+                document.querySelectorAll('.admin-autocomplete').forEach((input) => {
+                    if (input.dataset.bound === '1') return;
+                    input.dataset.bound = '1';
+                    const wrapper = input.closest('.position-relative');
+                    const menu = wrapper ? wrapper.querySelector('.admin-autocomplete-results') : null;
+                    const hidden = document.getElementById(`hidden_${input.dataset.target}`);
+                    const lookupUrl = input.dataset.lookupUrl;
+                    let timer = null;
+
+                    input.addEventListener('input', () => {
+                        if (hidden) hidden.value = '';
+                        clearTimeout(timer);
+                        const term = input.value.trim();
+                        if (!menu || !lookupUrl || term.length === 0) {
+                            if (menu) { menu.style.display = 'none'; menu.innerHTML = ''; }
+                            return;
+                        }
+
+                        timer = setTimeout(async () => {
+                            try {
+                                const resp = await fetch(`${lookupUrl}?term=${encodeURIComponent(term)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } });
+                                const data = await resp.json();
+                                const items = data.items || [];
+                                if (items.length === 0) {
+                                    menu.style.display = 'none';
+                                    menu.innerHTML = '';
+                                    return;
+                                }
+                                menu.innerHTML = items.map((item) => `<button type="button" class="dropdown-item admin-autocomplete-item" data-id="${item.id}" data-label="${escapeHtml(item.label)}">${escapeHtml(item.label)}</button>`).join('');
+                                menu.style.display = 'block';
+                                menu.querySelectorAll('.admin-autocomplete-item').forEach((item) => {
+                                    item.addEventListener('click', () => {
+                                        input.value = item.dataset.label || '';
+                                        if (hidden) hidden.value = item.dataset.id || '';
+                                        menu.style.display = 'none';
+                                    });
+                                });
+                            } catch (_) {
+                                menu.style.display = 'none';
+                            }
+                        }, 180);
+                    });
+                });
             };
 
             const renderActions = (row) => {
@@ -749,6 +801,15 @@
                     if (spinner) spinner.classList.remove('d-none');
                     if (submitBtn) submitBtn.disabled = true;
 
+                    const missingAutocomplete = Array.from(ajaxForm.querySelectorAll('.admin-autocomplete-hidden[data-required="1"]')).find((input) => !input.value);
+                    if (missingAutocomplete) {
+                        errorBox.innerHTML = `<div>${escapeHtml(missingAutocomplete.dataset.label || 'Selection')} : veuillez selectionner une valeur dans la liste.</div>`;
+                        errorBox.classList.remove('d-none');
+                        if (spinner) spinner.classList.add('d-none');
+                        if (submitBtn) submitBtn.disabled = false;
+                        return;
+                    }
+
                     if (categoryChecks.length > 0) {
                         const hasCategory = categoryChecks.some((c) => c.checked);
                         if (!hasCategory) {
@@ -813,6 +874,7 @@
             bindDeleteLinks();
             bindStateEditors();
             bindStatusEditors();
+            bindAutocompleteFields();
 
             @if ($pageKey === 'dashboard' && !empty($meta['dashboard_chart']))
                 if (typeof ApexCharts !== 'undefined') {

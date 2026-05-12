@@ -73,8 +73,7 @@
             ->pluck('notification_id')
             ->toArray();
         $unreadCount = $notifications->whereNotIn('id', $readIds)->count();
-        $isAdmin = $authUser->hasRole('Administrateur');
-        $isManager = $authUser->hasRole('Manager');
+        $isManagerSpace = request()->is('manager') || request()->is('manager/*');
         $adminNav = [
             ['key' => 'dashboard', 'label' => __('messages.nav.dashboard'), 'route' => 'admin.home', 'icon' => 'feather-airplay'],
             ['key' => 'country', 'label' => __('messages.nav.country'), 'route' => 'admin.country.home', 'icon' => 'feather-globe'],
@@ -103,15 +102,10 @@
             ['key' => 'manager_reported', 'label' => __('messages.nav.manager_reported'), 'route' => 'manager.reported.home', 'icon' => 'feather-flag'],
             ['key' => 'manager_notifications', 'label' => __('messages.nav.notifications'), 'route' => 'manager.notifications.home', 'icon' => 'feather-bell'],
         ];
-        if ($isAdmin && $isManager) {
-            $managerNav = array_values(array_filter($managerNav, fn ($item) => $item['key'] !== 'manager_members'));
-        }
-        $nav = [];
-        if ($isAdmin) $nav = array_merge($nav, $adminNav);
-        if ($isManager) $nav = array_merge($nav, $managerNav);
-        $homeRoute = ($isManager && !$isAdmin) ? route('manager.home') : route('admin.home');
-        $notificationsPageRoute = ($isManager && !$isAdmin) ? route('manager.notifications.home') : route('admin.notifications.home');
-        $workDetailRouteName = ($isManager && !$isAdmin) ? 'manager.work.datas' : 'admin.work.datas';
+        $nav = $isManagerSpace ? $managerNav : $adminNav;
+        $homeRoute = $isManagerSpace ? route('manager.home') : route('admin.home');
+        $notificationsPageRoute = $isManagerSpace ? route('manager.notifications.home') : route('admin.notifications.home');
+        $workDetailRouteName = $isManagerSpace ? 'manager.work.datas' : 'admin.work.datas';
     @endphp
 
     <nav class="nxl-navigation">
@@ -207,7 +201,7 @@
                                         : (($n->like && !empty($n->like->for_work_id))
                                             ? route($workDetailRouteName, ['id' => $n->like->for_work_id])
                                             : ((!empty($n->event_id) || !empty($n->circle_id))
-                                                ? (($isManager && !$isAdmin)
+                                                ? ($isManagerSpace
                                                     ? route('manager.members.datas', ['id' => (int) $n->from_user_id])
                                                     : route('admin.users.entity.datas', ['entity' => 'member', 'id' => (int) $n->from_user_id]))
                                                 : $notificationsPageRoute . '?focus=' . $n->id));

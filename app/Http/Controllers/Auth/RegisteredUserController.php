@@ -82,11 +82,15 @@ class RegisteredUserController extends Controller
             'former_password' => $request->password
         ]);
 
-        // Add "Administrateur" role (the first role)
-        $role_admin = Role::create([
-            'role_name' => 'Administrateur',
-            'role_description' => 'Gestion de toutes les données'
-        ]);
+        $role_admin = Role::where('role_name', 'Administrateur')->first();
+
+        if (empty($role_admin)) {
+            // Add "Administrateur" role (the first role)
+            $role_admin = Role::create([
+                'role_name' => 'Administrateur',
+                'role_description' => 'Responsable de la gestion du fonctionnement de l\'application.'
+            ]);
+        }
 
         // Register user with role
         $user->roles()->attach([$role_admin->id]);
