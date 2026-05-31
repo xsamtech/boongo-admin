@@ -27,6 +27,27 @@ return [
         'manager_establishments' => 'Etablissements',
         'manager_institutions' => 'Institutions',
         'manager_reported' => 'Signales',
+        'encoder_dashboard' => 'Accueil encodeur',
+        'encoder_work' => 'Oeuvres',
+    ],
+    'spaces' => [
+        'current' => 'Espace Boongo',
+        'admin' => 'ADMIN',
+        'manager' => 'MANAGER',
+        'encoder' => 'ENCODEUR',
+    ],
+    'home' => [
+        'title' => 'Bienvenue dans votre espace Boongo',
+        'description' => 'Choisissez un espace pour continuer. Les acces sont verifies selon votre role.',
+        'admin_description' => 'Administration generale de la plateforme, des utilisateurs, des roles et des contenus.',
+        'manager_description' => 'Suivi des membres, etablissements, institutions et elements signales.',
+        'encoder_description' => 'Enregistrement et suivi des oeuvres publiees sur la plateforme.',
+    ],
+    'encoder' => [
+        'relevant_works' => 'Oeuvres pertinentes',
+        'declassified_works' => 'Oeuvres declassees',
+        'my_works' => 'Mes oeuvres',
+        'latest_works' => '5 dernieres oeuvres',
     ],
     'search' => [
         'placeholder' => 'Rechercher...',
@@ -92,6 +113,7 @@ return [
         'role' => [
             'title' => 'Ajouter un role',
             'role_name' => 'Nom du role',
+            'task' => 'Tache',
             'role_description' => 'Description',
         ],
         'group' => [
@@ -159,6 +181,8 @@ return [
         'subscription' => 'Gestion des abonnements.',
         'organization' => 'Gestion des organisations.',
         'work' => 'Gestion des oeuvres.',
+        'encoder_dashboard' => 'Statistiques des oeuvres pour l encodeur.',
+        'encoder_work' => 'Enregistrer et consulter les oeuvres.',
         'users' => 'Gestion des utilisateurs.',
         'users_member' => 'Utilisateurs ayant uniquement le role Membre.',
         'users_partner' => 'Gestion des partenaires.',

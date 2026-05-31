@@ -135,7 +135,7 @@
         </div>
     @endif
 
-    @if ($pageKey === 'dashboard')
+    @if (in_array($pageKey, ['dashboard', 'encoder_dashboard']))
         @if (!empty($meta['dashboard_chart']))
             <div class="card mt-3">
                 <div class="card-header"><h6 class="mb-0">{{ __('messages.dashboard.global_chart') }}</h6></div>
@@ -202,7 +202,7 @@
         </div>
     @endif
 
-    @if (!in_array($pageKey, ['dashboard', 'notifications', 'manager_notifications']))
+    @if (!in_array($pageKey, ['dashboard', 'encoder_dashboard', 'notifications', 'manager_notifications']))
         @php
             $totalResults = isset($meta['pagination']) ? $meta['pagination']->total() : count($table['rows'] ?? []);
             $roleSelectOptions = $meta['role_select_options'] ?? [];
@@ -290,7 +290,7 @@
                                                                     @endforeach
                                                                 </ul>
                                                             </div>
-                                                        @elseif ($column === 'etat' && $pageKey === 'work')
+                                                        @elseif ($column === 'etat' && in_array($pageKey, ['work', 'encoder_work']))
                                                             @php
                                                                 $currentStatusId = (string) ($row['_work_status_id'] ?? $row['_status_id'] ?? '');
                                                                 $currentStatus = $workStatusOptions[$currentStatusId] ?? null;
@@ -351,7 +351,7 @@
                                     <h6 class="mb-0">{{ $form['title'] }}</h6>
                                 </div>
                                 <div class="card-body">
-                                    @if ($pageKey === 'work')
+                                    @if (in_array($pageKey, ['work', 'encoder_work']))
                                         @php
                                             $workForm = $meta['work_form_options'] ?? [];
                                         @endphp
@@ -611,7 +611,8 @@
                         const ok = await Swal.fire({ title: '{{ __('messages.delete.title') }}', text: confirmText, icon: 'warning', showCancelButton: true, confirmButtonText: 'OK' });
                         if (!ok.isConfirmed) return;
 
-                        const url = kind === 'work' ? `{{ url('/admin/work') }}/${entityId}/status` : `{{ url('/admin/users') }}/${entityId}/status`;
+                        const workStatusBaseUrl = @json(request()->is('encoder') || request()->is('encoder/*') ? url('/encoder/work') : url('/admin/work'));
+                        const url = kind === 'work' ? `${workStatusBaseUrl}/${entityId}/status` : `{{ url('/admin/users') }}/${entityId}/status`;
                         const resp = await fetch(url, { method: 'PATCH', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ status_id: statusId }) });
                         const data = await resp.json().catch(() => ({}));
                         if (!resp.ok || !data.success) { await Swal.fire({ icon: 'error', text: '{{ __('messages.errors.generic') }}' }); return; }

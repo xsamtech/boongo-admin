@@ -27,6 +27,27 @@ return [
         'manager_establishments' => 'Establishments',
         'manager_institutions' => 'Institutions',
         'manager_reported' => 'Reported',
+        'encoder_dashboard' => 'Encoder home',
+        'encoder_work' => 'Works',
+    ],
+    'spaces' => [
+        'current' => 'Boongo space',
+        'admin' => 'ADMIN',
+        'manager' => 'MANAGER',
+        'encoder' => 'ENCODER',
+    ],
+    'home' => [
+        'title' => 'Welcome to your Boongo space',
+        'description' => 'Choose a space to continue. Access is checked according to your role.',
+        'admin_description' => 'General administration of the platform, users, roles and content.',
+        'manager_description' => 'Monitor members, establishments, institutions and reported elements.',
+        'encoder_description' => 'Register and track works published on the platform.',
+    ],
+    'encoder' => [
+        'relevant_works' => 'Relevant works',
+        'declassified_works' => 'Declassified works',
+        'my_works' => 'My works',
+        'latest_works' => '5 latest works',
     ],
     'search' => [
         'placeholder' => 'Search...',
@@ -92,6 +113,7 @@ return [
         'role' => [
             'title' => 'Add role',
             'role_name' => 'Role name',
+            'task' => 'Task',
             'role_description' => 'Description',
         ],
         'group' => [
@@ -159,6 +181,8 @@ return [
         'subscription' => 'Subscriptions management.',
         'organization' => 'Organizations management.',
         'work' => 'Works management.',
+        'encoder_dashboard' => 'Work statistics for the encoder.',
+        'encoder_work' => 'Register and review works.',
         'users' => 'Users management.',
         'users_member' => 'Users with only the Member role.',
         'users_partner' => 'Partners management.',

@@ -8,9 +8,9 @@
     if (!empty($avatar) && !str_starts_with($avatar, 'http') && !str_starts_with($avatar, '/storage/') && !str_starts_with($avatar, 'storage/')) {
         $avatar = asset('storage/' . ltrim($avatar, '/'));
     } elseif (!empty($avatar) && str_starts_with($avatar, '/storage/')) {
-        $avatar = asset(ltrim($avatar, '/'));
+        $avatar = 'https://boongo7.com' . $avatar;
     } elseif (!empty($avatar) && str_starts_with($avatar, 'storage/')) {
-        $avatar = asset($avatar);
+        $avatar = 'https://boongo7.com/' . $avatar;
     }
 @endphp
 

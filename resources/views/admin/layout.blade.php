@@ -51,8 +51,10 @@
         if ($avatarValue !== '') {
             if (\Illuminate\Support\Str::startsWith($avatarValue, ['http://', 'https://', '//', 'data:'])) {
                 $avatarUrl = $avatarValue;
-            } elseif (\Illuminate\Support\Str::startsWith($avatarValue, ['/storage/', 'storage/'])) {
-                $avatarUrl = asset(ltrim($avatarValue, '/'));
+            } elseif (\Illuminate\Support\Str::startsWith($avatarValue, '/storage/')) {
+                $avatarUrl = 'https://boongo7.com' . $avatarValue;
+            } elseif (\Illuminate\Support\Str::startsWith($avatarValue, 'storage/')) {
+                $avatarUrl = 'https://boongo7.com/' . $avatarValue;
             } else {
                 $avatarUrl = asset('storage/' . ltrim($avatarValue, '/'));
             }
@@ -74,6 +76,7 @@
             ->toArray();
         $unreadCount = $notifications->whereNotIn('id', $readIds)->count();
         $isManagerSpace = request()->is('manager') || request()->is('manager/*');
+        $isEncoderSpace = request()->is('encoder') || request()->is('encoder/*');
         $adminNav = [
             ['key' => 'dashboard', 'label' => __('messages.nav.dashboard'), 'route' => 'admin.home', 'icon' => 'feather-airplay'],
             ['key' => 'country', 'label' => __('messages.nav.country'), 'route' => 'admin.country.home', 'icon' => 'feather-globe'],
@@ -102,10 +105,14 @@
             ['key' => 'manager_reported', 'label' => __('messages.nav.manager_reported'), 'route' => 'manager.reported.home', 'icon' => 'feather-flag'],
             ['key' => 'manager_notifications', 'label' => __('messages.nav.notifications'), 'route' => 'manager.notifications.home', 'icon' => 'feather-bell'],
         ];
-        $nav = $isManagerSpace ? $managerNav : $adminNav;
-        $homeRoute = $isManagerSpace ? route('manager.home') : route('admin.home');
-        $notificationsPageRoute = $isManagerSpace ? route('manager.notifications.home') : route('admin.notifications.home');
-        $workDetailRouteName = $isManagerSpace ? 'manager.work.datas' : 'admin.work.datas';
+        $encoderNav = [
+            ['key' => 'encoder_dashboard', 'label' => __('messages.nav.encoder_dashboard'), 'route' => 'encoder.home', 'icon' => 'feather-pie-chart'],
+            ['key' => 'encoder_work', 'label' => __('messages.nav.encoder_work'), 'route' => 'encoder.work.home', 'icon' => 'feather-book-open'],
+        ];
+        $nav = $isEncoderSpace ? $encoderNav : ($isManagerSpace ? $managerNav : $adminNav);
+        $homeRoute = $isEncoderSpace ? route('encoder.home') : ($isManagerSpace ? route('manager.home') : route('admin.home'));
+        $notificationsPageRoute = $isEncoderSpace ? route('encoder.home') : ($isManagerSpace ? route('manager.notifications.home') : route('admin.notifications.home'));
+        $workDetailRouteName = $isEncoderSpace ? 'encoder.work.datas' : ($isManagerSpace ? 'manager.work.datas' : 'admin.work.datas');
     @endphp
 
     <nav class="nxl-navigation">
@@ -118,7 +125,7 @@
             </div>
             <div class="navbar-content">
                 <ul class="nxl-navbar">
-                    <li class="nxl-item nxl-caption"><label>Administration Boongo</label></li>
+                    <li class="nxl-item nxl-caption"><label>{{ __('messages.spaces.current') }}</label></li>
                     @foreach ($nav as $item)
                         @php $isActive = isset($pageKey) && $pageKey === $item['key']; $url = isset($item['params']) ? route($item['route'], $item['params']) : route($item['route']); @endphp
                         <li class="nxl-item {{ $isActive ? 'active' : '' }}">

@@ -123,7 +123,7 @@ Route::middleware(['auth', 'role:Administrateur'])->group(function () {
     Route::patch('/admin/work/{id}/status', [AdminController::class, 'updateWorkStatus'])->whereNumber('id')->name('admin.work.update_status');
 });
 
-Route::middleware(['auth', 'role:Administrateur,Manager'])->group(function () {
+Route::middleware(['auth', 'role:Administrateur,Manager,Encodeur'])->group(function () {
     Route::get('/search/suggest', [AdminController::class, 'searchSuggestions'])->name('app.search.suggest');
 });
 
@@ -152,6 +152,20 @@ Route::middleware(['auth', 'role:Administrateur,Manager'])->group(function () {
     Route::post('/manager/reported/{id}', [ManagerController::class, 'updateReported'])->whereNumber('id');
     Route::get('/manager/notifications', [ManagerController::class, 'notifications'])->name('manager.notifications.home');
     Route::get('/manager/work/{id}', [ManagerController::class, 'workDatas'])->whereNumber('id')->name('manager.work.datas');
+});
+
+/*
+|--------------------------------------------------------------------------
+| ROUTES FOR "Encodeur"
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'role:Administrateur,Encodeur'])->group(function () {
+    Route::get('/encoder', [AdminController::class, 'encoderDashboard'])->name('encoder.home');
+    Route::get('/encoder/work', [AdminController::class, 'encoderWork'])->name('encoder.work.home');
+    Route::post('/encoder/work', [AdminController::class, 'addWork']);
+    Route::get('/encoder/work/{id}', [AdminController::class, 'encoderWorkDatas'])->whereNumber('id')->name('encoder.work.datas');
+    Route::post('/encoder/work/{id}', [AdminController::class, 'updateWork'])->whereNumber('id');
+    Route::patch('/encoder/work/{id}/status', [AdminController::class, 'updateWorkStatus'])->whereNumber('id')->name('encoder.work.update_status');
 });
 
 require __DIR__ . '/auth.php';

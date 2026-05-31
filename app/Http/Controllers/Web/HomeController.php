@@ -47,6 +47,10 @@ class HomeController extends Controller
      */
     public function index(Request $request)
     {
+        if (!$request->has('admin')) {
+            return view('dashboard.home');
+        }
+
         if ($request->has('admin')) {
             if ($request->has('type')) {
                 if ($request->get('type') == 'empty') {

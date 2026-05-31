@@ -69,6 +69,9 @@ class AdminController extends Controller
     public function organizationsDatas($id, Request $request) { return $this->renderAdminPage('organization', ['selectedId' => (int) $id], $request); }
     public function work(Request $request) { return $this->renderAdminPage('work', [], $request); }
     public function workDatas($id, Request $request) { return $this->renderAdminPage('work', ['selectedId' => (int) $id], $request); }
+    public function encoderDashboard(Request $request) { return $this->renderAdminPage('encoder_dashboard', [], $request); }
+    public function encoderWork(Request $request) { return $this->renderAdminPage('encoder_work', [], $request); }
+    public function encoderWorkDatas($id, Request $request) { return $this->renderAdminPage('encoder_work', ['selectedId' => (int) $id], $request); }
     public function users(Request $request) { return $this->renderAdminPage('users', [], $request); }
     public function usersEntity($entity, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'member' => 'users_member', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity], $request); }
     public function usersEntityDatas($entity, $id, Request $request) { return $this->renderAdminPage(['admin' => 'users_admin', 'manager' => 'users_manager', 'member' => 'users_member', 'partner' => 'users_partner', 'sponsor' => 'users_sponsor', 'publisher' => 'users_publisher'][$entity] ?? 'users_entity', ['entity' => $entity, 'selectedId' => (int) $id], $request); }
@@ -172,6 +175,8 @@ class AdminController extends Controller
             'subscription' => [__('messages.nav.subscription'), __('messages.pages.subscription')],
             'organization' => [__('messages.nav.organization'), __('messages.pages.organization')],
             'work' => [__('messages.nav.work'), __('messages.pages.work')],
+            'encoder_dashboard' => [__('messages.nav.encoder_dashboard'), __('messages.pages.encoder_dashboard')],
+            'encoder_work' => [__('messages.nav.encoder_work'), __('messages.pages.encoder_work')],
             'users' => [__('messages.nav.users'), __('messages.pages.users')],
             'users_admin' => [__('messages.nav.users'), __('messages.pages.users')],
             'users_manager' => [__('messages.nav.users'), __('messages.pages.users')],
@@ -206,7 +211,7 @@ class AdminController extends Controller
                     return [$name => $value];
                 })->toArray();
             }
-            if ($pageKey === 'work' && $model instanceof Work) {
+            if (in_array($pageKey, ['work', 'encoder_work'], true) && $model instanceof Work) {
                 $seconds = is_null($model->media_length) ? null : (int) $model->media_length;
                 $meta['detail_form_values'] = [
                     'work_title' => $model->work_title ?? '',
@@ -246,6 +251,28 @@ class AdminController extends Controller
                 'labels' => ['Oeuvres', 'Organisations', 'Partenaires', 'Sponsors', 'Publieurs', 'Utilisateurs'],
                 'series' => [Work::count(), Organization::count(), $this->usersByRole(['partner'])->count(), $this->usersByRole(['sponsor'])->count(), $this->usersByRole(['publisher', 'publieur'])->count(), User::count()],
             ];
+        } elseif ($key === 'encoder_dashboard') {
+            $workStatusGroupId = $this->statusGroupIdForPage('work');
+            $relevantStatusId = $this->findStatusIdByNameNeedles(['pertinente', 'pertinent'], $workStatusGroupId);
+            $declassifiedStatusId = $this->findStatusIdByNameNeedles(['declassee', 'declass'], $workStatusGroupId);
+            $cards = [
+                ['label' => __('messages.encoder.relevant_works'), 'value' => $relevantStatusId ? Work::where('status_id', $relevantStatusId)->count() : Work::count()],
+                ['label' => __('messages.encoder.declassified_works'), 'value' => $declassifiedStatusId ? Work::where('status_id', $declassifiedStatusId)->count() : 0],
+                ['label' => __('messages.encoder.my_works'), 'value' => Work::where('user_id', auth()->id())->count()],
+            ];
+            $meta['dashboard_tables'] = [
+                [
+                    'title' => __('messages.encoder.latest_works'),
+                    'columns' => ['id', 'title', 'owner', 'type', 'date'],
+                    'rows' => Work::with(['user_owner', 'type'])->latest()->limit(5)->get()->map(fn($w) => [
+                        'id' => (string) $w->id,
+                        'title' => $w->work_title ?? '-',
+                        'owner' => $this->userLabel($w->user_owner),
+                        'type' => $w->type ? $this->t($w->type, 'type_name', $locale) : '-',
+                        'date' => optional($w->created_at)->format('Y-m-d H:i'),
+                    ])->toArray(),
+                ],
+            ];
         } elseif ($key === 'country') {
             $table['columns'] = ['id', 'pays', 'code_tel', 'langue', 'utilisateurs'];
             $table['rows'] = Country::withCount('users')->latest()->limit(120)->get()->map(fn($c) => ['id' => (string) $c->id, 'pays' => $c->country_name, 'code_tel' => $c->country_phone_code ?? '-', 'langue' => $c->country_lang_code ?? '-', 'utilisateurs' => (string) $c->users_count])->toArray();
@@ -256,8 +283,8 @@ class AdminController extends Controller
             $table['columns'] = ['id', 'de', 'vers', 'taux', 'date'];
             $table['rows'] = CurrenciesRate::with(['from_currency', 'to_currency'])->latest()->limit(120)->get()->map(fn($r) => ['id' => (string) $r->id, 'de' => $r->from_currency?->currency_acronym ?? '-', 'vers' => $r->to_currency?->currency_acronym ?? '-', 'taux' => (string) $r->rate, 'date' => optional($r->created_at)->format('Y-m-d H:i')])->toArray();
         } elseif ($key === 'role') {
-            $table['columns'] = ['id', 'role', 'description', 'utilisateurs'];
-            $table['rows'] = Role::withCount('users')->latest()->limit(120)->get()->map(fn($r) => ['id' => (string) $r->id, 'role' => $r->role_name, 'description' => $r->role_description ?? '-', 'utilisateurs' => (string) $r->users_count])->toArray();
+            $table['columns'] = ['id', 'role', 'tache', 'description', 'utilisateurs'];
+            $table['rows'] = Role::withCount('users')->latest()->limit(120)->get()->map(fn($r) => ['id' => (string) $r->id, 'role' => $r->role_name, 'tache' => $r->task ?? '-', 'description' => $r->role_description ?? '-', 'utilisateurs' => (string) $r->users_count])->toArray();
         } elseif ($key === 'group') {
             $table['columns'] = ['id', 'groupe', 'categories', 'types', 'etats'];
             $table['rows'] = Group::withCount(['categories', 'types', 'statuses'])->latest()->limit(120)->get()->map(fn($g) => ['id' => (string) $g->id, 'groupe' => $g->group_name, 'categories' => (string) $g->categories_count, 'types' => (string) $g->types_count, 'etats' => (string) $g->statuses_count])->toArray();
@@ -293,7 +320,7 @@ class AdminController extends Controller
                 'oeuvres' => (string) $o->works_count,
             ])->toArray();
             $meta['work_status_options'] = $this->statusOptionsForPage('work', $locale);
-        } elseif ($key === 'work') {
+        } elseif (in_array($key, ['work', 'encoder_work'], true)) {
             $table['columns'] = ['id', 'titre', 'auteur', 'type', 'prix', 'devise', 'etat'];
             $table['rows'] = Work::with(['user_owner', 'type', 'currency', 'status'])->latest()->limit(120)->get()->map(fn($w) => [
                 'id' => (string) $w->id,
@@ -462,12 +489,13 @@ class AdminController extends Controller
             'country' => $base + ['title' => __('messages.forms.country.title'), 'action' => route('admin.country.home'), 'fields' => [['name' => 'country_name', 'label' => __('messages.forms.country.country_name'), 'type' => 'text', 'required' => true], ['name' => 'country_phone_code', 'label' => __('messages.forms.country.country_phone_code'), 'type' => 'text'], ['name' => 'country_lang_code', 'label' => __('messages.forms.country.country_lang_code'), 'type' => 'text']]],
             'currency' => $base + ['title' => __('messages.forms.currency.title'), 'action' => route('admin.currency.home'), 'fields' => [['name' => 'currency_name', 'label' => __('messages.forms.currency.currency_name'), 'type' => 'text', 'required' => true], ['name' => 'currency_acronym', 'label' => __('messages.forms.currency.currency_acronym'), 'type' => 'text', 'required' => true], ['name' => 'currency_icon', 'label' => __('messages.forms.currency.currency_icon'), 'type' => 'text']]],
             'currency_rate' => $base + ['title' => __('messages.forms.currency_rate.title'), 'action' => route('admin.currency.entity.home', ['entity' => 'rate']), 'fields' => [['name' => 'from_currency_id', 'label' => __('messages.forms.currency_rate.from_currency_id'), 'type' => 'number', 'required' => true], ['name' => 'to_currency_id', 'label' => __('messages.forms.currency_rate.to_currency_id'), 'type' => 'number', 'required' => true], ['name' => 'rate', 'label' => __('messages.forms.currency_rate.rate'), 'type' => 'number', 'step' => '0.00001', 'required' => true]]],
-            'role' => $base + ['title' => __('messages.forms.role.title'), 'action' => route('admin.role.home'), 'fields' => [['name' => 'role_name', 'label' => __('messages.forms.role.role_name'), 'type' => 'text', 'required' => true], ['name' => 'role_description', 'label' => __('messages.forms.role.role_description'), 'type' => 'textarea']]],
+            'role' => $base + ['title' => __('messages.forms.role.title'), 'action' => route('admin.role.home'), 'fields' => [['name' => 'role_name', 'label' => __('messages.forms.role.role_name'), 'type' => 'text', 'required' => true], ['name' => 'task', 'label' => __('messages.forms.role.task'), 'type' => 'text'], ['name' => 'role_description', 'label' => __('messages.forms.role.role_description'), 'type' => 'textarea']]],
             'group' => $base + ['title' => __('messages.forms.group.title'), 'action' => route('admin.group.home'), 'fields' => [['name' => 'group_name', 'label' => __('messages.forms.group.group_name'), 'type' => 'text', 'required' => true], ['name' => 'group_description', 'label' => __('messages.forms.group.group_description'), 'type' => 'textarea']]],
             'report_reason' => $base + ['title' => __('messages.forms.report_reason.title'), 'action' => route('admin.report_reason.home'), 'fields' => [['name' => 'reason_content', 'label' => __('messages.forms.report_reason.reason_content'), 'type' => 'text', 'required' => true], ['name' => 'reports_count', 'label' => __('messages.forms.report_reason.reports_count'), 'type' => 'number', 'required' => true], ['name' => 'blocked_for', 'label' => __('messages.forms.report_reason.blocked_for'), 'type' => 'number', 'required' => true], ['name' => 'entity', 'label' => __('messages.forms.report_reason.entity'), 'type' => 'text']]],
             'subscription' => $base + ['title' => __('messages.forms.subscription.title'), 'action' => route('admin.subscription.home'), 'fields' => [['name' => 'number_of_hours', 'label' => __('messages.forms.subscription.number_of_hours'), 'type' => 'number'], ['name' => 'price', 'label' => __('messages.forms.subscription.price'), 'type' => 'number', 'step' => '0.01'], ['name' => 'currency_id', 'label' => __('messages.forms.subscription.currency_id'), 'type' => 'number'], ['name' => 'type_id', 'label' => __('messages.forms.subscription.type_id'), 'type' => 'number'], ['name' => 'category_id', 'label' => __('messages.forms.subscription.category_id'), 'type' => 'number']]],
             'organization' => $base + ['title' => __('messages.forms.organization.title'), 'action' => route('admin.organizations.home'), 'fields' => [['name' => 'org_name', 'label' => __('messages.forms.organization.org_name'), 'type' => 'text', 'required' => true], ['name' => 'org_acronym', 'label' => __('messages.forms.organization.org_acronym'), 'type' => 'text'], ['name' => 'email', 'label' => __('messages.forms.organization.email'), 'type' => 'email'], ['name' => 'phone', 'label' => __('messages.forms.organization.phone'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.organization.website_url'), 'type' => 'text']]],
             'work' => $base + ['title' => __('messages.forms.work.title'), 'action' => route('admin.work.home'), 'fields' => [['name' => 'work_title', 'label' => __('messages.forms.work.work_title'), 'type' => 'text', 'required' => true], ['name' => 'type_id', 'label' => __('messages.forms.work.type_id'), 'type' => 'number', 'required' => true], ['name' => 'user_id', 'label' => __('messages.forms.work.user_id'), 'type' => 'number'], ['name' => 'author', 'label' => __('messages.forms.work.author'), 'type' => 'text']]],
+            'encoder_work' => $base + ['title' => __('messages.forms.work.title'), 'action' => route('encoder.work.home'), 'fields' => [['name' => 'work_title', 'label' => __('messages.forms.work.work_title'), 'type' => 'text', 'required' => true]]],
             'users_partner' => $base + ['title' => __('messages.forms.partner.title'), 'action' => route('admin.users.entity.home', ['entity' => 'partner']), 'fields' => [['name' => 'name', 'label' => __('messages.forms.partner.name'), 'type' => 'text', 'required' => true], ['name' => 'message', 'label' => __('messages.forms.partner.message'), 'type' => 'textarea'], ['name' => 'from_user_id', 'label' => __('messages.forms.partner.from_user_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'users']), 'required' => true], ['name' => 'from_organization_id', 'label' => __('messages.forms.partner.from_organization_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'organizations']), 'required' => true], ['name' => 'image_url', 'label' => __('messages.forms.partner.image_url'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.partner.website_url'), 'type' => 'url']]],
             'users_sponsor' => $base + ['title' => __('messages.forms.sponsor.title'), 'action' => route('admin.users.entity.home', ['entity' => 'sponsor']), 'fields' => [['name' => 'name', 'label' => __('messages.forms.partner.name'), 'type' => 'text', 'required' => true], ['name' => 'message', 'label' => __('messages.forms.partner.message'), 'type' => 'textarea'], ['name' => 'from_user_id', 'label' => __('messages.forms.partner.from_user_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'users']), 'required' => true], ['name' => 'from_organization_id', 'label' => __('messages.forms.partner.from_organization_id'), 'type' => 'autocomplete', 'lookup' => route('admin.lookup', ['entity' => 'organizations']), 'required' => true], ['name' => 'image_url', 'label' => __('messages.forms.partner.image_url'), 'type' => 'text'], ['name' => 'website_url', 'label' => __('messages.forms.partner.website_url'), 'type' => 'url']]],
             default => null,
@@ -625,7 +653,7 @@ class AdminController extends Controller
             'report_reason' => ReportReason::find($id),
             'report_reason_reported' => ToxicContent::with(['report_reason', 'user'])->find($id),
             'subscription' => Subscription::with(['currency', 'type', 'category'])->find($id),
-            'work', 'users_publisher_works' => Work::with(['user_owner', 'type', 'status', 'currency', 'categories'])->find($id),
+            'work', 'encoder_work', 'users_publisher_works' => Work::with(['user_owner', 'type', 'status', 'currency', 'categories'])->find($id),
             'organization' => Organization::with(['type', 'status', 'user_owner', 'works.status', 'works.type', 'works.currency'])->find($id),
             'users', 'users_admin', 'users_manager', 'users_member', 'users_publisher', 'users_partner_members', 'users_publisher_members' => User::with(['roles', 'country', 'status'])->find($id),
             'users_partner', 'users_sponsor' => Partner::find($id),
@@ -699,6 +727,7 @@ class AdminController extends Controller
             'subscription' => route('admin.subscription.datas', ['id' => $id]),
             'organization' => route('admin.organizations.datas', ['id' => $id]),
             'work' => route('admin.work.datas', ['id' => $id]),
+            'encoder_work' => route('encoder.work.datas', ['id' => $id]),
             'users', 'users_entity' => route('admin.users.entity.datas', ['entity' => 'member', 'id' => $id]),
             'users_admin' => route('admin.users.entity.datas', ['entity' => 'admin', 'id' => $id]),
             'users_manager' => route('admin.users.entity.datas', ['entity' => 'manager', 'id' => $id]),
@@ -731,6 +760,7 @@ class AdminController extends Controller
             'subscription' => url('/admin/subscription/' . $id),
             'organization' => url('/admin/organizations/' . $id),
             'work' => url('/admin/work/' . $id),
+            'encoder_work' => url('/encoder/work/' . $id),
             default => null,
         };
     }
@@ -751,6 +781,7 @@ class AdminController extends Controller
             'subscription' => route('admin.subscription.home'),
             'organization' => route('admin.organizations.home'),
             'work' => route('admin.work.home'),
+            'encoder_work' => route('encoder.work.home'),
             'users' => route('admin.users.home'),
             'users_admin' => route('admin.users.entity.home', ['entity' => 'admin']),
             'users_manager' => route('admin.users.entity.home', ['entity' => 'manager']),
@@ -769,7 +800,7 @@ class AdminController extends Controller
     private function backUrlForPage(string $pageKey, array $payload = [], ?Request $request = null): ?string
     {
         $previous = url()->previous();
-        if (!empty($previous) && $previous !== $request?->fullUrl() && str_contains($previous, '/admin/')) {
+        if (!empty($previous) && $previous !== $request?->fullUrl() && (str_contains($previous, '/admin/') || str_contains($previous, '/encoder/'))) {
             return $previous;
         }
         return $this->listUrlForPage($pageKey, $payload);
@@ -802,8 +833,8 @@ class AdminController extends Controller
     {
         if (empty($value)) return null;
         if (Str::startsWith($value, ['http://', 'https://', '//', 'data:'])) return $value;
-        if (Str::startsWith($value, '/storage/')) return asset(ltrim($value, '/'));
-        if (Str::startsWith($value, 'storage/')) return asset($value);
+        if (Str::startsWith($value, '/storage/')) return 'https://boongo7.com' . $value;
+        if (Str::startsWith($value, 'storage/')) return 'https://boongo7.com/' . $value;
         return asset('storage/' . ltrim($value, '/'));
     }
 
@@ -1107,13 +1138,13 @@ class AdminController extends Controller
         return $this->ajaxOrRedirectSuccess($request, __('notifications.registered_data'), ['id' => $rate->id]);
     }
     public function addRole(Request $request) {
-        $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'role_description' => 'nullable|string']);
+        $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'task' => 'nullable|string|max:255', 'role_description' => 'nullable|string']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
         $role = Role::create($v->validated());
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_role_success'), ['id' => $role->id]);
     }
     public function updateRole(Request $request, $id) {
-        $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'role_description' => 'nullable|string']);
+        $v = Validator::make($request->all(), ['role_name' => 'required|string|max:255', 'task' => 'nullable|string|max:255', 'role_description' => 'nullable|string']);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
         $role = Role::findOrFail($id);
         $role->update($v->validated());
