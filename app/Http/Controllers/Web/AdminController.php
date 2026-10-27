@@ -1344,7 +1344,7 @@ class AdminController extends Controller
             'status_id' => 'required|integer|exists:statuses,id',
             'user_id' => 'nullable|integer|exists:users,id',
             'organization_id' => 'nullable|integer|exists:organizations,id',
-            'files_urls.*' => 'file|max:512000',
+            ...\App\Services\WorkFiles::RULES,
         ]);
         if ($v->fails()) return $this->ajaxValidationOrRedirect($request, $v->errors()->toArray());
 
@@ -1373,10 +1373,6 @@ class AdminController extends Controller
 
         $group = Group::where('group_name', 'Type de fichier')->first();
         if (!$group) return $this->ajaxValidationOrRedirect($request, ['files_urls' => ['Configuration des types de fichier introuvable.']]);
-        $fileTypes = Type::query()->where('group_id', $group->id)->get();
-        $image = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'image'));
-        $doc = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'document'));
-        $audio = $fileTypes->first(fn ($t) => str_contains(Str::of($this->t($t, 'type_name', 'fr'))->ascii()->lower()->value(), 'audio'));
 
         $workUrl = trim((string) ($data['work_url'] ?? ''));
         $inputs = [
@@ -1396,21 +1392,17 @@ class AdminController extends Controller
             'organization_id' => $data['organization_id'] ?? null,
         ];
 
-        $work = Work::create($inputs);
-        $work->categories()->sync($data['categories_ids']);
-
-        if ($request->hasFile('files_urls')) {
-            $files = $request->file('files_urls', []); $names = $request->input('files_names', []);
-            foreach ($files as $k => $f) {
-                $ext = strtolower($f->getClientOriginalExtension()); $uri = ''; $typeId = null;
-                if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'avi', 'mov', 'mkv', 'webm'])) { $uri = 'images/works'; $typeId = $image?->id; }
-                elseif (in_array($ext, ['pdf', 'doc', 'docx', 'txt'])) { $uri = 'documents/works'; $typeId = $doc?->id; }
-                elseif (in_array($ext, ['mp3', 'wav', 'flac'])) { $uri = 'audios/works'; $typeId = $audio?->id; }
-                else { return $this->handleError(__('notifications.type_is_not_file')); }
-                $clean = sanitizeFileName($f->getClientOriginalName()); $path = $uri . '/' . $work->id . '/' . $clean;
-                try { $f->storeAs($uri . '/' . $work->id, $clean, 's3'); } catch (\Throwable $th) { return $this->handleError($th, __('notifications.create_work_file_500'), 500); }
-                File::create(['file_name' => trim($names[$k] ?? $clean), 'file_url' => config('filesystems.disks.s3.url') . $path, 'type_id' => $typeId, 'work_id' => $work->id]);
-            }
+        $stored = [];
+        try {
+            $work = DB::transaction(function () use ($inputs, $data, $request, &$stored) {
+                $work = Work::create($inputs);
+                $work->categories()->sync($data['categories_ids']);
+                app(\App\Services\WorkFiles::class)->append($work, $request, $stored);
+                return $work;
+            });
+        } catch (\Throwable $error) {
+            \Illuminate\Support\Facades\Storage::disk('s3')->delete($stored);
+            throw $error;
         }
 
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_work_success'), ['id' => $work->id]);

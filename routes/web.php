@@ -104,6 +104,10 @@ Route::middleware(['auth', 'role:Administrateur'])->group(function () {
     Route::post('/admin/organizations', [AdminController::class, 'addOrganization']);
     Route::get('/admin/organizations/{id}', [AdminController::class, 'organizationsDatas'])->whereNumber('id')->name('admin.organizations.datas');
     Route::post('/admin/organizations/{id}', [AdminController::class, 'updateOrganization'])->whereNumber('id');
+    Route::post('/admin/work/{work}/files', [\App\Http\Controllers\Web\WorkFileController::class, 'store'])->whereNumber('work');
+    Route::post('/admin/work/{work}/files/order', [\App\Http\Controllers\Web\WorkFileController::class, 'reorder'])->whereNumber('work');
+    Route::post('/admin/work/{work}/files/{file}', [\App\Http\Controllers\Web\WorkFileController::class, 'update'])->whereNumber(['work', 'file']);
+    Route::delete('/admin/work/{work}/files/{file}', [\App\Http\Controllers\Web\WorkFileController::class, 'destroy'])->whereNumber(['work', 'file']);
     Route::get('/admin/work', [AdminController::class, 'work'])->name('admin.work.home');
     Route::post('/admin/work', [AdminController::class, 'addWork']);
     Route::get('/admin/work/{id}', [AdminController::class, 'workDatas'])->whereNumber('id')->name('admin.work.datas');

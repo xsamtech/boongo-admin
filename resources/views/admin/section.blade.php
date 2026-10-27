@@ -1,6 +1,12 @@
 @extends('admin.layout')
 
 @section('content')
+    @php
+        $isWorkEditor = $pageKey === 'work';
+    @endphp
+    @if ($isWorkEditor)
+        @include('admin.work-editor')
+    @endif
     <div class="page-header mb-3">
         <div class="page-header-left d-flex align-items-center">
             <div class="page-header-title">
@@ -25,7 +31,7 @@
         </div>
     @endif
 
-    @if (!empty($meta['detail']))
+    @if (!empty($meta['detail']) && !$isWorkEditor)
         <div class="card mt-3">
             <div class="card-header d-flex justify-content-between align-items-center gap-2">
                 <h6 class="mb-0">{{ $meta['detail']['title'] ?? __('messages.labels.selection') }}</h6>
@@ -221,7 +227,7 @@
             </div>
             <div class="card-body">
                 <div class="row g-3">
-                    <div class="{{ !empty($form) ? 'col-12 col-xl-8' : 'col-12' }}">
+                    <div class="{{ !empty($form) && !$isWorkEditor ? 'col-12 col-xl-8' : 'col-12' }}">
                         @if ($pageKey === 'users' && !empty($meta['role_options']))
                             <div class="row mb-3">
                                 <div class="col-md-4">
@@ -344,7 +350,7 @@
                         @endif
                     </div>
 
-                    @if (!empty($form))
+                    @if (!empty($form) && !$isWorkEditor)
                         <div class="col-12 col-xl-4">
                             <div class="card h-100">
                                 <div class="card-header">
