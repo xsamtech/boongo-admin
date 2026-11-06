@@ -104,6 +104,7 @@ Route::middleware(['auth', 'role:Administrateur'])->group(function () {
     Route::post('/admin/organizations', [AdminController::class, 'addOrganization']);
     Route::get('/admin/organizations/{id}', [AdminController::class, 'organizationsDatas'])->whereNumber('id')->name('admin.organizations.datas');
     Route::post('/admin/organizations/{id}', [AdminController::class, 'updateOrganization'])->whereNumber('id');
+    Route::post('/admin/work/{work}/files/{file}/preview', [\App\Http\Controllers\Web\WorkFileController::class, 'preview'])->whereNumber(['work', 'file']);
     Route::post('/admin/work/{work}/files', [\App\Http\Controllers\Web\WorkFileController::class, 'store'])->whereNumber('work');
     Route::post('/admin/work/{work}/files/order', [\App\Http\Controllers\Web\WorkFileController::class, 'reorder'])->whereNumber('work');
     Route::post('/admin/work/{work}/files/{file}', [\App\Http\Controllers\Web\WorkFileController::class, 'update'])->whereNumber(['work', 'file']);
@@ -165,6 +166,11 @@ Route::middleware(['auth', 'role:Administrateur,Manager'])->group(function () {
 */
 Route::middleware(['auth', 'role:Administrateur,Encodeur'])->group(function () {
     Route::get('/encoder', [AdminController::class, 'encoderDashboard'])->name('encoder.home');
+    Route::post('/encoder/work/{work}/files/{file}/preview', [\App\Http\Controllers\Web\WorkFileController::class, 'preview'])->whereNumber(['work', 'file']);
+    Route::post('/encoder/work/{work}/files', [\App\Http\Controllers\Web\WorkFileController::class, 'store'])->whereNumber('work');
+    Route::post('/encoder/work/{work}/files/order', [\App\Http\Controllers\Web\WorkFileController::class, 'reorder'])->whereNumber('work');
+    Route::post('/encoder/work/{work}/files/{file}', [\App\Http\Controllers\Web\WorkFileController::class, 'update'])->whereNumber(['work', 'file']);
+    Route::delete('/encoder/work/{work}/files/{file}', [\App\Http\Controllers\Web\WorkFileController::class, 'destroy'])->whereNumber(['work', 'file']);
     Route::get('/encoder/work', [AdminController::class, 'encoderWork'])->name('encoder.work.home');
     Route::post('/encoder/work', [AdminController::class, 'addWork']);
     Route::get('/encoder/work/{id}', [AdminController::class, 'encoderWorkDatas'])->whereNumber('id')->name('encoder.work.datas');

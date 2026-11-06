@@ -7,15 +7,15 @@
     $values['media_length'] = $seconds ? sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60) : '';
     $editorFiles = $selectedWork ? $selectedWork->files->sortBy(fn ($file) => sprintf('%010d-%010d', $file->position ?? PHP_INT_MAX, $file->id))->values()->map(fn ($file) => [
         'id' => $file->id, 'name' => $file->file_name, 'url' => $file->file_url, 'title' => $file->part_title,
-        'cover' => $file->part_cover_url, 'position' => $file->position, 'duration' => $file->media_length,
+        'cover' => $file->part_cover_url, 'position' => $file->position, 'duration' => $file->media_length, 'previewEndpoint' => url((request()->is('encoder/*') ? '/encoder/work/' : '/admin/work/').$selectedWork->id.'/files/'.$file->id.'/preview'),
         'typeId' => $file->type_id, 'typeLabel' => $file->type?->getTranslation('type_name', app()->getLocale()),
     ])->all() : [];
     $fileTypes = \App\Models\Type::whereHas('group', fn ($q) => $q->where('group_name', 'Type de fichier'))->get()->map(fn ($type) => [
         'id' => $type->id, 'label' => $type->getTranslation('type_name', app()->getLocale()), 'fr' => $type->getTranslation('type_name', 'fr'),
     ])->all();
     $editorConfig = ['values' => $values, 'files' => $editorFiles, 'options' => $options, 'types' => $fileTypes,
-        'statuses' => $meta['work_status_options'] ?? [], 'id' => $selectedWork?->id, 'base' => url('/admin/work'),
-        'fallback' => asset('assets/img/cover.png'), 'csrf' => csrf_token(), 'labels' => trans('work_editor')];
+        'statuses' => $meta['work_status_options'] ?? [], 'id' => $selectedWork?->id, 'base' => url(request()->is('encoder/*') ? '/encoder/work' : '/admin/work'),
+        'fallback' => asset('assets/img/cover.png'), 'previewModule' => asset('assets/js/work-previews.js'), 'pdfModule' => asset('assets/addons/pdfjs/pdf.mjs'), 'pdfWorker' => asset('assets/addons/pdfjs/pdf.worker.mjs'), 'pdfAssets' => asset('assets/addons/pdfjs').'/', 'csrf' => csrf_token(), 'labels' => trans('work_editor')];
 @endphp
 <link rel="stylesheet" href="{{ asset('assets/css/work-editor.css') }}">
 <div id="workEditorRoot">

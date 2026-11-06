@@ -65,16 +65,47 @@
         return ext === 'pdf' || file.mime === 'application/pdf' ? 'pdf' : 'document';
     }
     function safeUrl(url) {
+        if(!url)return '';
         try {const parsed = new URL(url, location.href);return ['http:','https:','blob:'].includes(parsed.protocol) ? parsed.href : '';} catch (_) {return '';}
     }
-    function thumbnail(file) {
-        const k = kind(file), cover = esc(safeUrl(file.cover || c.fallback)), url = esc(safeUrl(file.url));
-        if (k === 'audio') return `<img class="work-cover" src="${cover}" alt="${esc(l.cover)}"><div class="work-audio"><span aria-hidden="true">♫</span><strong>${esc(l.audio)}</strong></div><audio controls preload="none" src="${url}"></audio>`;
-        let preview = '';
-        if (k === 'image') preview = `<img class="work-cover mt-2" src="${url}" alt="${esc(file.title || file.name)}" loading="lazy">`;
-        if (k === 'pdf') preview = `<object class="work-cover mt-2" data="${url}#page=1&toolbar=0" type="application/pdf"><span>PDF</span></object>`;
-        if (k === 'video') preview = `<video class="work-cover mt-2" src="${url}" preload="metadata" muted></video>`;
-        return `<img class="work-cover" src="${cover}" alt="${esc(l.cover)}" loading="lazy">${preview}`;
+    const durationText = value => {
+        if (value == null || value === '') return '';
+        const seconds = Number(value);
+        return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');
+    };
+    const fileAccept = '.jpg,.jpeg,.png,.gif,.webp,.mp4,.avi,.mov,.mkv,.webm,.pdf,.doc,.docx,.txt,.mp3,.wav,.flac,.ogg,.m4a';
+    const family = file => ['image','video'].includes(kind(file)) ? 'image' : kind(file)==='audio' ? 'audio' : 'document';
+    const groupKey = file => String(file.typeId ?? family(file));
+    function thumbnail(file,index) {
+        const k=kind(file), url=esc(safeUrl(file.url));
+        if(k==='image')return `<img class="work-cover work-photo" src="${url || esc(c.fallback)}" alt="${esc(file.title || file.name)}" loading="lazy">`;
+        if(k==='audio')return `<div class="work-audio"><span aria-hidden="true">&#9835;</span><audio controls preload="none" src="${url}"></audio></div>`;
+        if(k==='video')return `<button type="button" class="work-video" data-action="view" data-index="${index}" aria-label="${esc(l.preview)}"><svg width="52" height="52" viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M8 4v16l13-8z"/></svg></button>`;
+        return `<div class="work-document"><canvas data-document-index="${index}" aria-label="${esc(l.preview)}"></canvas><span class="work-document-state">${esc(l.loading_preview)}</span></div>`;
+    }
+    let previewRenderer;
+    let previewQueue=Promise.resolve();
+    const previewObservers=new WeakMap();
+    function hydratePreviews(target,files) {
+        previewObservers.get(target)?.disconnect();
+        target.querySelectorAll('.work-photo').forEach(image=>image.addEventListener('error',()=>{image.src=c.fallback;},{once:true}));
+        const canvases=[...target.querySelectorAll('[data-document-index]')];
+        const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
+            if(!entry.isIntersecting)return;
+            observer.unobserve(entry.target);
+            const canvas=entry.target, file=files[Number(canvas.dataset.documentIndex)];
+            previewQueue=previewQueue.then(async()=>{
+                if(!canvas.isConnected)return;
+                try {
+                    previewRenderer ||= import(c.previewModule);
+                    const {paintDocument}=await previewRenderer;
+                    await paintDocument(canvas,file,c,kind(file)==='pdf');
+                    canvas.nextElementSibling.hidden=true;
+                } catch(_) {canvas.hidden=true;canvas.nextElementSibling.textContent=l.preview_unavailable;}
+            });
+        }),{rootMargin:'100px'});
+        canvases.forEach(canvas=>observer.observe(canvas));
+        previewObservers.set(target,observer);
     }
     function renderFiles(target, files, editable, persisted = false) {
         const groups = new Map();
@@ -84,7 +115,8 @@
             if (!groups.has(key)) groups.set(key,{label,items:[]});
             groups.get(key).items.push({file,index});
         });
-        $(target).innerHTML = files.length ? [...groups.values()].map(group=>`<h6>${esc(group.label)}</h6><div class="work-file-grid">${group.items.map(({file,index})=>`<article class="work-file-card">${thumbnail(file)}<div class="work-file-title mt-2">${esc(file.title || '')}${editable ? icon('edit',l.edit,'✎',index) : ''}</div><small class="text-muted d-block">${esc(file.name)}</small><div class="work-file-actions">${icon('view',l.preview,'◉',index)}${editable ? icon('up',l.up,'↑',index)+icon('down',l.down,'↓',index)+icon('remove',l.remove,'×',index) : ''}</div></article>`).join('')}</div>`).join('') : `<p class="text-muted">${esc(l.empty)}</p>`;
+        $(target).innerHTML = files.length ? [...groups.values()].map(group=>`<h6>${esc(group.label)}</h6><div class="work-file-grid">${group.items.map(({file,index})=>`<article class="work-file-card">${thumbnail(file,index)}<div class="work-file-title mt-2">${esc(file.title || '')}${editable ? icon('edit',l.edit,'✎',index) : ''}</div><small class="text-muted d-block">${esc(file.name)}</small><div class="work-file-actions">${icon('view',l.preview,'◉',index)}${editable ? icon('up',l.up,'↑',index)+icon('down',l.down,'↓',index)+icon('remove',l.remove,'×',index) : ''}</div></article>`).join('')}</div>`).join('') : `<p class="text-muted">${esc(l.empty)}</p>`;
+        hydratePreviews($(target),files);
         $(target).querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async () => {
             const index = Number(button.dataset.index), action = button.dataset.action, file = files[index];
             if (action === 'view') return view(file);
@@ -98,7 +130,9 @@
                     else {release(file.url);release(file.cover);}
                     files.splice(index,1);
                 } else {
-                    const to = index + (action === 'up' ? -1 : 1);
+                    const direction=action==='up' ? -1 : 1;
+                    let to=index+direction;
+                    while(to>=0 && to<files.length && groupKey(files[to])!==groupKey(file))to+=direction;
                     if (to < 0 || to >= files.length) return;
                     const reordered = [...files]; [reordered[index],reordered[to]] = [reordered[to],reordered[index]];
                     if (persisted) await request(`${c.base}/${c.id}/files/order`,formData({ids:reordered.map(f=>f.id)}));
@@ -116,7 +150,7 @@
     }
     function editFile(file,persisted) {
         editContext = {file,persisted};
-        $('workEditFields').innerHTML = `<div class="col-12"><label class="form-label">${esc(l.part_title)}<input class="form-control" name="part_title" maxlength="1000" value="${esc(file.title)}"></label></div><div class="col-12"><label class="form-label">${esc(l.file_name)}<input class="form-control" name="file_name" required maxlength="1000" value="${esc(file.name)}"></label></div>${persisted ? `<div class="col-12"><label class="form-label">${esc(l.media_length)}<input class="form-control" type="number" min="0" step="1" name="media_length" value="${esc(file.duration)}"></label></div>` : ''}<div class="col-12"><label class="form-label">${esc(l.cover)}<input class="form-control" name="cover" type="file" accept="image/jpeg,image/png,image/webp"></label></div>`;
+        $('workEditFields').innerHTML = `<div class="col-12"><label class="form-label">${esc(l.part_title)}<input class="form-control" name="part_title" maxlength="1000" value="${esc(file.title)}"></label></div><div class="col-12"><label class="form-label">${esc(l.file_name)}<input class="form-control" name="file_name" required maxlength="1000" value="${esc(file.name)}"></label></div>${persisted ? `<div class="col-12"><label class="form-label">${esc(l.media_length)}<input class="form-control" type="text" pattern="[0-9]{2}:[0-5][0-9]:[0-5][0-9]" placeholder="00:00:00" maxlength="8" name="media_length" value="${esc(durationText(file.duration))}"></label></div>` : ''}<div class="col-12"><label class="form-label">${esc(l.replacement)}<input class="form-control" name="replacement" type="file" accept="${fileAccept}"></label></div><div class="col-12"><label class="form-label">${esc(l.cover)}<input class="form-control" name="cover" type="file" accept="image/jpeg,image/png,image/webp"></label></div>`;
         error('workEditError','');$('workEdit').showModal();
     }
     function displayValue(def,values) {
@@ -145,7 +179,13 @@
                 const {file,persisted}=editContext, data=new FormData(form), cover=data.get('cover');
                 if (cover?.size && (!['image/jpeg','image/png','image/webp'].includes(cover.type) || cover.size>10485760)) throw new Error(l.invalid_cover);
                 if (persisted) {await request(`${c.base}/${c.id}/files/${file.id}`,data);location.reload();return;}
-                file.title=data.get('part_title');file.name=data.get('file_name');
+                const replacement=data.get('replacement');
+                if(replacement?.size){
+                    if(replacement.size>512000*1024 || !/\.(jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv|webm|pdf|doc|docx|txt|mp3|wav|flac|ogg|m4a)$/i.test(replacement.name))throw new Error(l.invalid_file);
+                    release(file.url);release(file.cover);file.upload=replacement;file.url=objectUrl(replacement);file.mime=replacement.type;
+                    file.cover=null;file.coverFile=null;file.typeId=null;file.typeLabel=null;file.previewEndpoint=null;
+                }
+                file.title=data.get('part_title');file.name=replacement?.size ? replacement.name : data.get('file_name');
                 if (cover?.size) {release(file.cover);file.coverFile=cover;file.cover=objectUrl(cover);}
                 renderFiles('workDraftFiles',draft,true);
             }

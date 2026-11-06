@@ -125,6 +125,110 @@ class WorkFilesTest extends TestCase
         $this->assertSame(2, $a->fresh()->position);
     }
 
+    public function test_reorder_accepts_string_ids_from_multipart_form_data(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
+        $work = Work::create([]);
+        $a = $work->files()->create(['position' => 1]);
+        $b = $work->files()->create(['position' => 2]);
+        $this->post("/admin/work/{$work->id}/files/order", ['ids' => [(string) $b->id, (string) $a->id]], ['Accept' => 'application/json'])->assertOk();
+        $this->assertSame(1, $b->fresh()->position);
+        $this->assertSame(2, $a->fresh()->position);
+    }
+
+    public function test_file_duration_converts_hms_to_seconds_and_rejects_invalid_time(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
+        $work = Work::create([]);
+        $file = $work->files()->create([]);
+        $url = "/admin/work/{$work->id}/files/{$file->id}";
+        $this->postJson($url, ['media_length' => '01:02:03'])->assertOk();
+        $this->assertSame(3723, $file->fresh()->media_length);
+        $this->postJson($url, ['media_length' => '00:60:00'])->assertUnprocessable()->assertJsonValidationErrors('media_length');
+        $this->assertSame(3723, $file->fresh()->media_length);
+    }
+
+    public function test_replacement_changes_type_url_and_removes_old_file_and_cover(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
+        $work = Work::create([]);
+        $old = "images/works/{$work->id}/photo.jpg";
+        $cover = "images/works/{$work->id}/covers/old.jpg";
+        Storage::disk('s3')->put($old, 'old');
+        Storage::disk('s3')->put($cover, 'cover');
+        $image = Type::where('type_name->fr', 'Image')->first();
+        $file = $work->files()->create(['position' => 3, 'part_title' => 'Part one', 'type_id' => $image->id,
+            'file_url' => Storage::disk('s3')->url($old), 'part_cover_url' => Storage::disk('s3')->url($cover)]);
+        $pdf = UploadedFile::fake()->createWithContent('document.pdf', "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+        $this->postJson("/admin/work/{$work->id}/files/{$file->id}", ['replacement' => $pdf])->assertOk();
+        $file->refresh();
+        $this->assertSame('Document', $file->type->getTranslation('type_name', 'fr'));
+        $this->assertStringContainsString('/documents/works/', $file->file_url);
+        $this->assertSame('document.pdf', $file->file_name);
+        $this->assertSame(3, $file->position);
+        $this->assertSame('Part one', $file->part_title);
+        $this->assertNull($file->part_cover_url);
+        Storage::disk('s3')->assertMissing($old);
+        Storage::disk('s3')->assertMissing($cover);
+        $url = $file->file_url;
+        $this->postJson("/admin/work/{$work->id}/files/{$file->id}", ['replacement' => UploadedFile::fake()->image('new.jpg')])->assertOk();
+        $this->assertSame('Image', $file->fresh()->type->getTranslation('type_name', 'fr'));
+        Storage::disk('s3')->assertMissing(app(WorkFiles::class)->pathForUrl($url));
+    }
+
+    public function test_document_preview_returns_only_requested_bytes_as_json_and_is_work_scoped(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
+        $work = Work::create([]);
+        $other = Work::create([]);
+        $path = "documents/works/{$work->id}/document.pdf";
+        Storage::disk('s3')->put($path, str_repeat('abcdef', 20000));
+        $file = $work->files()->create(['file_url' => Storage::disk('s3')->url($path)]);
+        $response = $this->postJson("/admin/work/{$work->id}/files/{$file->id}/preview", ['offset' => 6, 'length' => 12]);
+        $response->assertOk()->assertHeader('Content-Type', 'application/json')->assertJsonPath('size', 120000);
+        $this->assertSame('abcdefabcdef', base64_decode($response->json('data')));
+        $this->postJson("/admin/work/{$other->id}/files/{$file->id}/preview", [])->assertNotFound();
+        $this->postJson("/admin/work/{$work->id}/files/{$file->id}/preview", ['length' => 99999999])->assertUnprocessable();
+    }
+
+    public function test_encoder_can_manage_files_using_encoder_routes_but_cannot_use_admin_routes(): void
+    {
+        $encoder = new \App\Models\User;
+        $encoder->id = 1;
+        $encoder->setRelation('roles', collect([new \App\Models\Role(['role_name' => 'Encodeur'])]));
+        $this->actingAs($encoder);
+        $work = Work::create([]);
+        $base = "/encoder/work/{$work->id}/files";
+        $this->postJson($base, ['files_urls' => [UploadedFile::fake()->image('photo.jpg')]])->assertOk();
+        $file = $work->files()->first();
+        $this->postJson($base.'/order', ['ids' => [(string) $file->id]])->assertOk();
+        $this->postJson($base.'/'.$file->id, ['media_length' => '00:01:30', 'part_title' => 'Updated'])->assertOk();
+        $this->assertSame(90, $file->fresh()->media_length);
+        $this->postJson("/admin/work/{$work->id}/files/{$file->id}", ['part_title' => 'Forbidden'])->assertForbidden();
+        $this->deleteJson($base.'/'.$file->id)->assertOk();
+        $this->assertNull($file->fresh());
+    }
+
+    public function test_docx_preview_returns_a_first_page_excerpt_without_document_markup(): void
+    {
+        $temporary = tempnam(sys_get_temp_dir(), 'work-preview-');
+        try {
+            $zip = new \ZipArchive;
+            $zip->open($temporary, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+            $zip->addFromString('word/document.xml', '<w:document><w:p><w:r><w:t>First page &amp; title</w:t></w:r></w:p><w:br w:type="page"/><w:p><w:r><w:t>Second page</w:t></w:r></w:p></w:document>');
+            $zip->close();
+            $work = Work::create([]);
+            $path = "documents/works/{$work->id}/document.docx";
+            Storage::disk('s3')->put($path, file_get_contents($temporary));
+            $text = app(\App\Services\WorkDocumentPreview::class)->excerpt(Storage::disk('s3')->url($path));
+            $this->assertStringContainsString('First page & title', $text);
+            $this->assertStringNotContainsString('Second page', $text);
+            $this->assertStringNotContainsString('<w:', $text);
+        } finally {
+            unlink($temporary);
+        }
+    }
+
     public function test_delete_removes_both_storage_objects_and_database_row(): void
     {
         $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
@@ -160,6 +264,76 @@ class WorkFilesTest extends TestCase
         $this->assertSame('New title', $file->fresh()->part_title);
         $this->assertNotSame(Storage::disk('s3')->url($old), $file->fresh()->part_cover_url);
         Storage::disk('s3')->assertMissing($old);
+    }
+
+    public function test_acl_disabled_bucket_retries_upload_with_bucket_owner_control(): void
+    {
+        $upload = UploadedFile::fake()->image('cover.jpg');
+        $adapter = \Mockery::mock(\League\Flysystem\FilesystemAdapter::class);
+        $aws = new \Aws\S3\Exception\S3Exception('ACLs disabled', new \Aws\Command('PutObject'), [
+            'code' => 'AccessControlListNotSupported',
+        ]);
+        $adapter->shouldReceive('writeStream')->once()->ordered()
+            ->withArgs(fn ($path, $stream, $config) => $config->get('visibility') === 'public' && is_resource($stream))
+            ->andThrow(\League\Flysystem\UnableToWriteFile::atLocation('cover.jpg', '', $aws));
+        $adapter->shouldReceive('writeStream')->once()->ordered()
+            ->withArgs(function ($path, $stream, $config) use ($upload) {
+                $this->assertSame(file_get_contents($upload->getRealPath()), stream_get_contents($stream));
+
+                return $config->get('ACL') === 'bucket-owner-full-control';
+            });
+        $driver = new \League\Flysystem\Filesystem($adapter, ['visibility' => 'public']);
+        Storage::set('s3', new \Illuminate\Filesystem\FilesystemAdapter($driver, $adapter, ['throw' => false]));
+
+        $stored = [];
+        $path = app(WorkFiles::class)->store($upload, 'images/works/1/covers', $stored);
+        $this->assertSame([$path], $stored);
+        $this->assertStringStartsWith('images/works/1/covers/', $path);
+    }
+
+    public function test_upload_permission_error_is_preserved_without_retry_even_when_disk_swallows_errors(): void
+    {
+        $adapter = \Mockery::mock(\League\Flysystem\FilesystemAdapter::class);
+        $aws = new \Aws\S3\Exception\S3Exception('Access denied', new \Aws\Command('PutObject'), [
+            'code' => 'AccessDenied', 'message' => 'Missing s3:PutObject permission',
+        ]);
+        $failure = \League\Flysystem\UnableToWriteFile::atLocation('cover.jpg', '', $aws);
+        $adapter->shouldReceive('writeStream')->once()->andThrow($failure);
+        $driver = new \League\Flysystem\Filesystem($adapter);
+        Storage::set('s3', new \Illuminate\Filesystem\FilesystemAdapter($driver, $adapter, ['throw' => false]));
+        \Illuminate\Support\Facades\Log::shouldReceive('error')->once()->with('Work file upload failed', \Mockery::on(
+            fn ($context) => $context['aws_error_code'] === 'AccessDenied'
+        ));
+
+        $stored = [];
+        try {
+            app(WorkFiles::class)->store(UploadedFile::fake()->image('cover.jpg'), 'images/works/1/covers', $stored);
+            $this->fail('A failed upload must throw.');
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('S3: AccessDenied', $error->getMessage());
+            $this->assertSame($failure, $error->getPrevious());
+            $this->assertSame([], $stored);
+        }
+    }
+
+    public function test_failed_cover_upload_keeps_existing_metadata_and_old_cover(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
+        $work = Work::create([]);
+        $old = "images/works/{$work->id}/covers/old.jpg";
+        Storage::disk('s3')->put($old, 'old');
+        $file = $work->files()->create(['part_title' => 'Original', 'part_cover_url' => Storage::disk('s3')->url($old)]);
+        $this->mock(WorkFiles::class, function ($mock) {
+            $mock->shouldReceive('store')->once()->andThrow(new \RuntimeException('S3 unavailable'));
+            $mock->shouldNotReceive('deleteUrl');
+        });
+        \Illuminate\Support\Facades\Log::shouldReceive('error')->zeroOrMoreTimes();
+        $this->postJson("/admin/work/{$work->id}/files/{$file->id}", [
+            'part_title' => 'Changed', 'cover' => UploadedFile::fake()->image('cover.jpg'),
+        ])->assertStatus(500);
+        $this->assertSame('Original', $file->fresh()->part_title);
+        $this->assertSame(Storage::disk('s3')->url($old), $file->fresh()->part_cover_url);
+        Storage::disk('s3')->assertExists($old);
     }
 
     public function test_upload_endpoint_saves_files(): void

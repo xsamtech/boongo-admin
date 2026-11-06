@@ -2,7 +2,7 @@
 
 @section('content')
     @php
-        $isWorkEditor = $pageKey === 'work';
+        $isWorkEditor = in_array($pageKey, ['work', 'encoder_work'], true);
     @endphp
     @if ($isWorkEditor)
         @include('admin.work-editor')
