@@ -13,20 +13,21 @@
                             <p class="lead fw-normal text-muted mb-5">
                                 Téléchargez l'appli Boongo, et commancez à consulter ou à publier des œuvres de tout type et toute catégorie.
                             </p>
-                            <form action="{{ route('download') }}" method="POST" class="mb-3">
+                {{-- <form action="{{ route('download') }}" method="POST" class="mb-3 text-center">
     @csrf
-                                <button class="btn btn-outline-dark">
-                                    <i class="bi bi-android me-2 fs-5 align-middle"></i> Télécharger sur le site
-                                </button>
-                            </form>
-                            <div class="d-flex flex-column flex-lg-row align-items-center">
-                                <a class="me-lg-3 mb-4 mb-lg-0" href="#!">
-                                    <img class="app-badge" src="{{ asset('templates/public/assets/img/google-play-badge.svg') }}" alt="..." />
-                                </a>
-                                <a href="#!">
-                                    <img class="app-badge" src="{{ asset('templates/public/assets/img/app-store-badge.svg') }}" alt="..." />
-                                </a>
-                            </div>
+                    <button class="btn btn-light">
+                        <i class="bi bi-android me-2 fs-5 align-middle"></i> Télécharger sur le site
+                    </button>
+                </form> --}}
+
+                <div class="d-flex flex-column flex-lg-row align-items-center justify-content-center">
+                    <a class="me-lg-3 mb-4 mb-lg-0" href="https://play.google.com/store/apps/details?id=com.boongo_app_2&pcampaignid=web_share">
+                        <img class="app-badge" src="{{ asset('templates/public/assets/img/google-play-badge.svg') }}" alt="..." />
+                    </a>
+                    <a href="https://apps.apple.com/cd/app/boongo-app/id6790836550">
+                        <img class="app-badge" src="{{ asset('templates/public/assets/img/app-store-badge.svg') }}" alt="..." />
+                    </a>
+                </div>
                         </div>
                     </div>
                     <div class="col-lg-6">

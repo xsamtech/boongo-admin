@@ -82,18 +82,18 @@
             <div class="container px-5">
                 <h2 class="text-center text-white font-alt mb-4">Téléchargez l'appli maintenant !</h2>
 
-                <form action="{{ route('download') }}" method="POST" class="mb-3 text-center">
+                {{-- <form action="{{ route('download') }}" method="POST" class="mb-3 text-center">
     @csrf
                     <button class="btn btn-light">
                         <i class="bi bi-android me-2 fs-5 align-middle"></i> Télécharger sur le site
                     </button>
-                </form>
+                </form> --}}
 
                 <div class="d-flex flex-column flex-lg-row align-items-center justify-content-center">
-                    <a class="me-lg-3 mb-4 mb-lg-0" href="#!">
+                    <a class="me-lg-3 mb-4 mb-lg-0" href="https://play.google.com/store/apps/details?id=com.boongo_app_2&pcampaignid=web_share">
                         <img class="app-badge" src="{{ asset('templates/public/assets/img/google-play-badge.svg') }}" alt="..." />
                     </a>
-                    <a href="#!">
+                    <a href="https://apps.apple.com/cd/app/boongo-app/id6790836550">
                         <img class="app-badge" src="{{ asset('templates/public/assets/img/app-store-badge.svg') }}" alt="..." />
                     </a>
                 </div>
