@@ -1,7 +1,13 @@
 <?php
 
 return [
-    'network_error' => 'La connexion a été interrompue. Vérifiez votre connexion avant de réessayer.',
+    'single_upload' => 'Envoyez un seul fichier par requête de reprise.',
+    'creating_work' => 'Enregistrement des informations de l’œuvre…',
+    'upload_progress' => 'Envoi du fichier :current sur :total…',
+    'upload_resume' => 'La fiche de l’œuvre est enregistrée. Cliquez sur « Reprendre l’envoi » pour continuer avec les fichiers restants, ou ouvrez la fiche pour vérifier les fichiers enregistrés.',
+    'resume_upload' => 'Reprendre l’envoi',
+    'open_saved_work' => 'Ouvrir l’œuvre enregistrée',
+    'network_error' => 'La connexion a été interrompue. Vérifiez votre connexion et si l’œuvre a été créée avant de réessayer.',
     'session_expired' => 'Votre session a expiré. Rechargez la page et reconnectez-vous si nécessaire.',
     'access_denied' => 'Vous n’avez pas l’autorisation d’effectuer cette opération.',
     'route_missing' => 'La route d’enregistrement est introuvable. Vérifiez le déploiement des routes sur le serveur.',

@@ -52,3 +52,37 @@ test('network errors are logged without logging submitted form data',async()=>{
     assert.equal(logs[0][1].reason,'network');
     assert.ok(!JSON.stringify(logs).includes('private form content'));
 });
+
+test('Cloudflare 524 is a timeout and retains the Ray ID',async()=>{
+    const {options,logs}=client(new Response(JSON.stringify({status:524,title:'Timeout',ray_id:'ray-123'}),{status:524}));
+    await assert.rejects(WorkRequests.request('/admin/work',null,options),/server_timeout.*HTTP 524.*ray-123/);
+    assert.equal(logs[0][1].reference,'ray-123');
+});
+
+test('uploads one file at a time, creates only once and resumes after a failed response',async()=>{
+    const state={}, files=[{name:'one'},{name:'two'},{name:'three'}], calls=[], tokens=[];
+    let creations=0, finalized=0, fail=true, active=0;
+    const options={state,files,create:async()=>{creations++;return 42;},
+        upload:async(id,file)=>{
+            assert.equal(id,42);assert.equal(++active,1);calls.push(file.name);tokens.push(file.uploadToken);
+            await Promise.resolve();active--;
+            if(file.name==='two' && fail)throw new Error('Lost response');
+        },finalize:async()=>{finalized++;}};
+    await assert.rejects(WorkRequests.saveWork(options),/Lost response/);
+    assert.equal(state.workId,42);assert.equal(files[0].uploaded,true);assert.equal(finalized,0);
+    fail=false;
+    assert.equal(await WorkRequests.saveWork(options),42);
+    assert.equal(creations,1);assert.equal(finalized,1);
+    assert.deepEqual(calls,['one','two','two','three']);
+    assert.equal(tokens[1],tokens[2]);
+    await WorkRequests.saveWork(options);
+    assert.equal(calls.length,4);assert.equal(finalized,1);
+});
+
+test('adding files to an existing work does not create another work',async()=>{
+    let uploads=0;
+    await WorkRequests.saveWork({state:{workId:3},files:[{}],
+        create:async()=>assert.fail('Must not create a second work'),
+        upload:async(id)=>{assert.equal(id,3);uploads++;}});
+    assert.equal(uploads,1);
+});

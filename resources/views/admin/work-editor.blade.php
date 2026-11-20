@@ -32,6 +32,8 @@
         <div class="work-dialog-heading"><h5 id="workWizardTitle">{{ __('work_editor.add') }}</h5><button type="button" class="btn btn-light" data-close="workWizard" aria-label="{{ __('work_editor.close') }}">×</button></div>
         <ol class="work-steps"><li>{{ __('work_editor.step1') }}</li><li>{{ __('work_editor.step2') }}</li><li>{{ __('work_editor.step3') }}</li></ol>
         <div id="workWizardError" class="alert alert-danger d-none" role="alert"></div>
+        <p id="workUploadStatus" role="status" aria-live="polite"></p>
+        <a id="workSavedLink" class="btn btn-outline-primary mb-3" hidden>{{ __('work_editor.open_saved_work') }}</a>
         <form id="workWizardForm" novalidate>
             <div data-step="1"><div id="workCreateFields" class="row g-3"></div><div class="work-drop mt-3"><label class="btn btn-outline-primary">+ {{ __('work_editor.files') }}<input id="workInitialFiles" type="file" multiple class="visually-hidden" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime,.avi,.mkv,.pdf,.doc,.docx,.txt,audio/*"></label><span id="workInitialCount" class="ms-2"></span></div></div>
             <div data-step="2" hidden><p class="text-muted">{{ __('work_editor.order_hint') }}</p><label class="btn btn-outline-primary mb-3">+ {{ __('work_editor.files') }}<input id="workMoreFiles" type="file" multiple class="visually-hidden" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime,.avi,.mkv,.pdf,.doc,.docx,.txt,audio/*"></label><div id="workDraftFiles"></div></div>

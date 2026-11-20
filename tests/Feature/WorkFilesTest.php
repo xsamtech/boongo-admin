@@ -17,6 +17,59 @@ use Tests\TestCase;
 
 class WorkFilesTest extends TestCase
 {
+    public function test_metadata_can_be_created_before_uploading_files_without_accessing_s3(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class]);
+        Schema::table('works', function (Blueprint $table) {
+            foreach (['work_content', 'work_url', 'video_source', 'media_length', 'author', 'editor', 'is_public',
+                'consultation_price', 'currency_id', 'type_id', 'status_id', 'user_id', 'organization_id'] as $column) {
+                $table->text($column)->nullable();
+            }
+        });
+        Schema::create('categories', function (Blueprint $table) {
+            $table->id();
+        });
+        Schema::create('statuses', function (Blueprint $table) {
+            $table->id();
+        });
+        Schema::create('category_work', function (Blueprint $table) {
+            $table->unsignedBigInteger('work_id');
+            $table->unsignedBigInteger('category_id');
+        });
+        DB::table('categories')->insert(['id' => 1]);
+        DB::table('statuses')->insert(['id' => 1]);
+        Storage::shouldReceive('disk')->never();
+        $this->postJson('/admin/work', [
+            'work_title' => 'Metadata first', 'work_content' => 'Description', 'is_public' => '1',
+            'type_id' => Type::first()->id, 'categories_ids' => [1], 'status_id' => 1,
+        ])->assertOk()->assertJsonPath('success', true);
+        $this->assertSame(1, Work::count());
+        $this->assertSame(0, Work::first()->files()->count());
+        $this->assertSame([1], Work::first()->categories()->pluck('categories.id')->all());
+    }
+
+    public function test_retrying_a_single_file_with_same_token_does_not_create_duplicate_files(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class]);
+        $work = Work::create([]);
+        $token = (string) \Illuminate\Support\Str::uuid();
+        $url = "/admin/work/{$work->id}/files";
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $this->postJson($url, [
+                'files_urls' => [UploadedFile::fake()->image('photo.jpg')],
+                'part_covers' => [UploadedFile::fake()->image('cover.jpg')],
+                'part_titles' => ['Part one'], 'upload_token' => $token,
+            ])->assertOk();
+        }
+        $this->assertSame(1, $work->files()->count());
+        $this->assertCount(2, Storage::disk('s3')->allFiles());
+        $this->assertStringContainsString($token, $work->files()->first()->file_url);
+        $this->postJson($url, ['upload_token' => $token, 'files_urls' => [
+            UploadedFile::fake()->image('one.jpg'), UploadedFile::fake()->image('two.jpg'),
+        ]])->assertUnprocessable();
+        $this->assertSame(1, $work->files()->count());
+    }
+
     public function test_expired_session_returns_json_instead_of_login_html_for_work_uploads(): void
     {
         $this->postJson('/admin/work', [])->assertUnauthorized()
@@ -39,6 +92,7 @@ class WorkFilesTest extends TestCase
         // a production schema mismatch before the first upload is stored.
         Storage::shouldReceive('disk')->never();
         $reference = null;
+        \Illuminate\Support\Facades\Log::shouldReceive('info')->zeroOrMoreTimes();
         \Illuminate\Support\Facades\Log::shouldReceive('error')->once()->with('Work creation failed', \Mockery::on(function ($context) use (&$reference) {
             $reference = $context['reference'];
 
@@ -338,6 +392,7 @@ class WorkFilesTest extends TestCase
         $adapter->shouldReceive('writeStream')->once()->andThrow($failure);
         $driver = new \League\Flysystem\Filesystem($adapter);
         Storage::set('s3', new \Illuminate\Filesystem\FilesystemAdapter($driver, $adapter, ['throw' => false]));
+        \Illuminate\Support\Facades\Log::shouldReceive('info')->zeroOrMoreTimes();
         \Illuminate\Support\Facades\Log::shouldReceive('error')->once()->with('Work file upload failed', \Mockery::on(
             fn ($context) => $context['aws_error_code'] === 'AccessDenied'
         ));
@@ -364,6 +419,7 @@ class WorkFilesTest extends TestCase
             $mock->shouldReceive('store')->once()->andThrow(new \RuntimeException('S3 unavailable'));
             $mock->shouldNotReceive('deleteUrl');
         });
+        \Illuminate\Support\Facades\Log::shouldReceive('info')->zeroOrMoreTimes();
         \Illuminate\Support\Facades\Log::shouldReceive('error')->zeroOrMoreTimes();
         $this->postJson("/admin/work/{$work->id}/files/{$file->id}", [
             'part_title' => 'Changed', 'cover' => UploadedFile::fake()->image('cover.jpg'),
@@ -395,6 +451,7 @@ class WorkFilesTest extends TestCase
 
     public function test_failed_append_rolls_back_records_and_cleans_storage(): void
     {
+        \Illuminate\Support\Facades\Log::shouldReceive('info')->zeroOrMoreTimes();
         \Illuminate\Support\Facades\Log::shouldReceive('error')->zeroOrMoreTimes();
         $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class, \App\Http\Middleware\VerifyCsrfToken::class]);
         $work = Work::create([]);

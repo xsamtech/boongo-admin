@@ -1,7 +1,13 @@
 <?php
 
 return [
-    'network_error' => 'The connection was interrupted. Check your connection before trying again.',
+    'single_upload' => 'Send only one file per resumable upload request.',
+    'creating_work' => 'Saving work information…',
+    'upload_progress' => 'Uploading file :current of :total…',
+    'upload_resume' => 'The work record is saved. Click “Resume upload” to continue with the remaining files, or open the work to check the saved files.',
+    'resume_upload' => 'Resume upload',
+    'open_saved_work' => 'Open saved work',
+    'network_error' => 'The connection was interrupted. Check your connection and whether the work was created before trying again.',
     'session_expired' => 'Your session has expired. Reload the page and sign in again if necessary.',
     'access_denied' => 'You do not have permission to perform this action.',
     'route_missing' => 'The save route could not be found. Check that the server routes were deployed.',

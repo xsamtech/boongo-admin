@@ -16,6 +16,7 @@
         ['user_id','publisher','select',false,c.options.publishers], ['organization_id','organization','select',false,c.options.organizations]
     ];
     let draft = [], existing = c.files, step = 1, append = false, editContext = null, busy = false;
+    let uploadState = {workId:null}, uploadStarted = false;
     const urls = new Set();
     const objectUrl = file => {const url = URL.createObjectURL(file); urls.add(url); return url;};
     const release = url => {if (urls.delete(url)) URL.revokeObjectURL(url);};
@@ -201,7 +202,7 @@
     function showStep(value) {
         step=value;document.querySelectorAll('#workWizard [data-step]').forEach(el=>el.hidden=Number(el.dataset.step)!==step);
         document.querySelectorAll('.work-steps li').forEach((el,index)=>el.classList.toggle('active',index+1===step));
-        $('workPrevious').hidden=step===(append?2:1);$('workNext').hidden=step===3;$('workPublish').hidden=step!==3;
+        $('workPrevious').hidden=uploadStarted || step===(append?2:1);$('workNext').hidden=step===3;$('workPublish').hidden=step!==3;
         if(step===3){
             const values=collect($('workWizardForm'));
             $('workSummary').innerHTML=append?'':definitions.map(def=>`<div class="mb-2"><small class="text-muted">${esc(l[def[1]])}</small><div style="white-space:pre-wrap">${esc(displayValue(def,values))}</div></div>`).join('');
@@ -209,6 +210,8 @@
         }
     }
     function openWizard(onlyFiles) {
+        uploadState={workId:onlyFiles?c.id:null};uploadStarted=false;
+        $('workUploadStatus').textContent='';$('workSavedLink').hidden=true;
         append=onlyFiles;draft.forEach(f=>{release(f.url);release(f.cover);});draft=[];
         $('workWizardForm').reset();$('workCreateFields').innerHTML=onlyFiles?'':definitions.map(d=>field(d,{is_public:1,status_id:c.options.declassified_status_id,categories_ids:[]})).join('');
         pricing($('workCreateFields'));$('workInitialCount').textContent='';error('workWizardError','');renderFiles('workDraftFiles',draft,true);showStep(onlyFiles?2:1);$('workWizard').showModal();
@@ -227,13 +230,45 @@
     $('workPrevious').addEventListener('click',()=>showStep(step-1));
     $('workWizardForm').addEventListener('submit',async event=>{
         event.preventDefault();if(step!==3 || busy)return;busy=true;
+        error('workWizardError','');
         const buttons=[...$('workWizard').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);$('workPublish').textContent=l.uploading;
         try {
-            const data=append?new FormData():formData(collect(event.currentTarget));
-            draft.forEach((file,index)=>{data.append(`files_urls[${index}]`,file.upload);data.append(`part_titles[${index}]`,file.title);data.append(`files_names[${index}]`,file.name);if(file.coverFile)data.append(`part_covers[${index}]`,file.coverFile);});
-            const result=await request(append?`${c.base}/${c.id}/files`:c.base,data);
-            location.href=append?`${c.base}/${c.id}`:`${c.base}/${result.data.id}`;
-        }catch(e){error('workWizardError',e.message);}finally{busy=false;buttons.forEach(b=>b.disabled=false);$('workPublish').textContent=l.save;}
+            const values=collect(event.currentTarget);
+            const id=await WorkRequests.saveWork({
+                state:uploadState, files:draft,
+                create:async()=>{
+                    $('workUploadStatus').textContent=l.creating_work;
+                    const initialValues={...values};
+                    if(c.options.declassified_status_id)initialValues.status_id=c.options.declassified_status_id;
+                    const result=await request(c.base,formData(initialValues));
+                    return result.data.id;
+                },
+                finalize:async(workId)=>{
+                    if(!append && c.options.declassified_status_id && String(values.status_id)!==String(c.options.declassified_status_id)) {
+                        await request(`${c.base}/${workId}`,formData(values));
+                    }
+                },
+                upload:async(workId,file)=>{
+                    const data=new FormData();
+                    data.append('files_urls[0]',file.upload);data.append('part_titles[0]',file.title);
+                    data.append('files_names[0]',file.name);data.append('upload_token',file.uploadToken);
+                    if(file.coverFile)data.append('part_covers[0]',file.coverFile);
+                    await request(`${c.base}/${workId}/files`,data);
+                },
+                onProgress:(current,total)=>{
+                    uploadStarted=true;$('workPrevious').hidden=true;
+                    $('workUploadStatus').textContent=l.upload_progress.replace(':current',current).replace(':total',total);
+                },
+            });
+            location.href=`${c.base}/${id}`;
+        }catch(e){
+            const saved=uploadState.workId;
+            error('workWizardError',e.message+(saved?'\n'+l.upload_resume:''));
+            if(saved){$('workSavedLink').href=`${c.base}/${saved}`;$('workSavedLink').hidden=false;}
+        }finally{
+            busy=false;buttons.forEach(b=>b.disabled=false);
+            $('workPublish').textContent=uploadStarted?l.resume_upload:l.save;
+        }
     });
     document.querySelectorAll('#workEditorRoot [data-close]').forEach(button=>button.addEventListener('click',()=>$(button.dataset.close).close()));
     $('workWizard').addEventListener('cancel',event=>{if(busy)event.preventDefault();});

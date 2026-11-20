@@ -55,6 +55,11 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'visibility' => 'public',
             'throw' => false,
+            'http' => [
+                'connect_timeout' => (float) env('AWS_CONNECT_TIMEOUT', 10),
+                'timeout' => (float) env('AWS_REQUEST_TIMEOUT', 60),
+            ],
+            'retries' => (int) env('AWS_REQUEST_RETRIES', 0),
         ],
 
     ],

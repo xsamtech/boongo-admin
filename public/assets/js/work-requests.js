@@ -23,7 +23,7 @@
         const statusMessages = {
             401:labels.session_expired, 419:labels.session_expired, 403:labels.access_denied,
             404:labels.route_missing, 405:labels.route_missing, 413:labels.upload_too_large,
-            500:labels.server_error, 502:labels.server_error, 503:labels.server_error, 504:labels.server_timeout,
+            500:labels.server_error, 502:labels.server_error, 503:labels.server_error, 504:labels.server_timeout, 524:labels.server_timeout,
         };
         let message = response.redirected ? labels.session_expired : (statusMessages[response.status] || labels.unexpected_response);
         if (!response.redirected && valid && response.status === 422 && payload.errors) {
@@ -33,7 +33,7 @@
             // never copy HTML error pages into the modal.
             message = response.status >= 500 && !payload.reference ? (statusMessages[response.status] || labels.server_error) : payload.message;
         }
-        const reference = valid && payload.reference ? String(payload.reference) : null;
+        const reference = valid && (payload.reference || payload.ray_id) ? String(payload.reference || payload.ray_id) : response.headers.get('cf-ray');
         logger.error('[Work request failed]', {
             url, method, status:response.status, statusText:response.statusText,
             redirected:response.redirected, finalUrl:response.url,
@@ -42,5 +42,21 @@
         });
         throw new Error(`${message || labels.error} (HTTP ${response.status})${reference ? ` — ${labels.error_reference}: ${reference}` : ''}`);
     }
-    globalThis.WorkRequests = {request};
+    async function saveWork({state, files, create, upload, finalize = async () => {}, onProgress = () => {}}) {
+        if (!state.workId) state.workId = await create();
+        for (let index = 0; index < files.length; index++) {
+            const file = files[index];
+            if (file.uploaded) continue;
+            file.uploadToken ||= globalThis.crypto.randomUUID();
+            onProgress(index + 1, files.length);
+            await upload(state.workId, file);
+            file.uploaded = true;
+        }
+        if (!state.finalized) {
+            await finalize(state.workId);
+            state.finalized = true;
+        }
+        return state.workId;
+    }
+    globalThis.WorkRequests = {request, saveWork};
 })();

@@ -23,6 +23,7 @@ class WorkFiles
         'files_names.*' => 'nullable|string|max:1000',
         'part_covers' => 'nullable|array',
         'part_covers.*' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:10240',
+        'upload_token' => 'nullable|uuid',
     ];
 
     public function append(Work $work, Request $request, array &$stored): void
@@ -30,7 +31,13 @@ class WorkFiles
         $position = (int) $work->files()->max('position');
         foreach ($request->file('files_urls', []) as $index => $upload) {
             [$kind, $type] = $this->classify($upload);
-            $path = $this->store($upload, "{$kind}s/works/{$work->id}", $stored);
+            $directory = "{$kind}s/works/{$work->id}";
+            $token = $request->input('upload_token');
+            // A retry after a lost response must not create a second file.
+            if ($token && $work->files()->where('file_url', Storage::disk('s3')->url($directory.'/'.$token.'.'.$upload->extension()))->exists()) {
+                continue;
+            }
+            $path = $this->store($upload, $directory, $stored, $token);
             $cover = isset($request->file('part_covers', [])[$index])
                 ? $this->store($request->file('part_covers')[$index], "images/works/{$work->id}/covers", $stored) : null;
             $work->files()->create([
@@ -57,9 +64,13 @@ class WorkFiles
         return [$kind, $type];
     }
 
-    public function store($upload, string $directory, array &$stored): string
+    public function store($upload, string $directory, array &$stored, ?string $token = null): string
     {
-        $path = trim($directory, '/').'/'.Str::uuid().'.'.$upload->extension();
+        $path = trim($directory, '/').'/'.($token ?? Str::uuid()).'.'.$upload->extension();
+        $started = microtime(true);
+        Log::info('Work file upload started', [
+            'path' => $path, 'bytes' => $upload->getSize(), 'cf_ray' => request()->header('CF-Ray'),
+        ]);
         try {
             try {
                 $this->writeUpload($upload, $path);
@@ -79,11 +90,13 @@ class WorkFiles
                 'aws_error_message' => $aws?->getAwsErrorMessage(),
                 'http_status' => $aws?->getStatusCode(),
                 'exception_class' => $error::class,
+                'duration_seconds' => round(microtime(true) - $started, 3),
             ]);
             $code = $aws?->getAwsErrorCode();
             throw new \RuntimeException(__('work_editor.storage_error').($code ? ' (S3: '.$code.')' : ''), 0, $error);
         }
         $stored[] = $path;
+        Log::info('Work file upload completed', ['path' => $path, 'duration_seconds' => round(microtime(true) - $started, 3)]);
 
         return $path;
     }

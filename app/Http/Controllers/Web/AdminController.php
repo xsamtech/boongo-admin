@@ -1324,6 +1324,10 @@ class AdminController extends Controller
 
     public function addWork(Request $request)
     {
+        $started = microtime(true);
+        \Illuminate\Support\Facades\Log::info('Work creation started', [
+            'user_id' => auth()->id(), 'cf_ray' => $request->header('CF-Ray'),
+        ]);
         $workTypeGroupId = $this->findGroupIdByKeywords(['type d oeuvre', 'type oeuvre']);
         $workCategoryGroupId = $this->findGroupIdByKeywords(['categorie pour oeuvre', 'categorie oeuvre']);
         $workStatusGroupId = $this->statusGroupIdForPage('work');
@@ -1423,6 +1427,9 @@ class AdminController extends Controller
             throw $error;
         }
 
+        \Illuminate\Support\Facades\Log::info('Work creation completed', [
+            'work_id' => $work->id, 'duration_seconds' => round(microtime(true) - $started, 3),
+        ]);
         return $this->ajaxOrRedirectSuccess($request, __('notifications.create_work_success'), ['id' => $work->id]);
     }
 

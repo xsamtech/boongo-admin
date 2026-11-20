@@ -26,7 +26,13 @@ class WorkFileController extends Controller
 
     public function store(Request $request, Work $work, WorkFiles $files)
     {
+        \Illuminate\Support\Facades\Log::info('Work file request received', [
+            'work_id' => $work->id, 'cf_ray' => $request->header('CF-Ray'),
+        ]);
         $request->validate(array_replace(WorkFiles::RULES, ['files_urls' => 'required|array|min:1|max:50']));
+        if ($request->filled('upload_token') && count($request->file('files_urls', [])) !== 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['files_urls' => __('work_editor.single_upload')]);
+        }
         $stored = [];
         try {
             DB::transaction(function () use ($work, $request, $files, &$stored) {
@@ -34,7 +40,13 @@ class WorkFileController extends Controller
                 $files->append($work, $request, $stored);
             });
         } catch (\Throwable $error) {
-            Storage::disk('s3')->delete($stored);
+            if ($stored !== []) {
+                try {
+                    Storage::disk('s3')->delete($stored);
+                } catch (\Throwable $cleanupError) {
+                    report($cleanupError);
+                }
+            }
             throw $error;
         }
 
