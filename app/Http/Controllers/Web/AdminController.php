@@ -1401,7 +1401,25 @@ class AdminController extends Controller
                 return $work;
             });
         } catch (\Throwable $error) {
-            \Illuminate\Support\Facades\Storage::disk('s3')->delete($stored);
+            if ($stored !== []) {
+                try {
+                    \Illuminate\Support\Facades\Storage::disk('s3')->delete($stored);
+                } catch (\Throwable $cleanupError) {
+                    report($cleanupError);
+                }
+            }
+            if ($error instanceof \Illuminate\Validation\ValidationException) {
+                throw $error;
+            }
+            $reference = (string) Str::uuid();
+            \Illuminate\Support\Facades\Log::error('Work creation failed', [
+                'reference' => $reference, 'user_id' => auth()->id(), 'exception' => $error,
+            ]);
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false, 'message' => __('work_editor.server_error'), 'reference' => $reference,
+                ], 500);
+            }
             throw $error;
         }
 

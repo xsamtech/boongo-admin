@@ -1,6 +1,15 @@
 <?php
 
 return [
+    'network_error' => 'The connection was interrupted. Check your connection before trying again.',
+    'session_expired' => 'Your session has expired. Reload the page and sign in again if necessary.',
+    'access_denied' => 'You do not have permission to perform this action.',
+    'route_missing' => 'The save route could not be found. Check that the server routes were deployed.',
+    'upload_too_large' => 'The upload exceeds the server limit. Reduce the file sizes or count, or increase the server upload limits.',
+    'server_error' => 'The server could not complete the save. Check the server logs.',
+    'server_timeout' => 'The server took too long to respond. Check whether the work was created before trying again.',
+    'unexpected_response' => 'The server returned an unexpected response. Details are available in the browser console.',
+    'error_reference' => 'Reference',
     'add' => 'Add a work',
     'next' => 'Next',
     'back' => 'Previous',

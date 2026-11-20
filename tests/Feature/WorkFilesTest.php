@@ -17,6 +17,43 @@ use Tests\TestCase;
 
 class WorkFilesTest extends TestCase
 {
+    public function test_expired_session_returns_json_instead_of_login_html_for_work_uploads(): void
+    {
+        $this->postJson('/admin/work', [])->assertUnauthorized()
+            ->assertHeader('Content-Type', 'application/json')
+            ->assertJsonPath('message', __('work_editor.session_expired'));
+    }
+
+    public function test_creation_failure_returns_a_logged_reference_and_does_not_initialize_unused_storage(): void
+    {
+        $this->withoutMiddleware([\App\Http\Middleware\Authenticate::class, \App\Http\Middleware\EnsureUserHasAnyRole::class]);
+        Schema::create('categories', function (Blueprint $table) {
+            $table->id();
+        });
+        Schema::create('statuses', function (Blueprint $table) {
+            $table->id();
+        });
+        DB::table('categories')->insert(['id' => 1]);
+        DB::table('statuses')->insert(['id' => 1]);
+        // The isolated works table deliberately lacks work_content, simulating
+        // a production schema mismatch before the first upload is stored.
+        Storage::shouldReceive('disk')->never();
+        $reference = null;
+        \Illuminate\Support\Facades\Log::shouldReceive('error')->once()->with('Work creation failed', \Mockery::on(function ($context) use (&$reference) {
+            $reference = $context['reference'];
+
+            return $context['exception'] instanceof \Illuminate\Database\QueryException;
+        }));
+        $response = $this->postJson('/admin/work', [
+            'work_title' => 'Test', 'work_content' => 'Description', 'is_public' => '1',
+            'type_id' => Type::first()->id, 'categories_ids' => [1], 'status_id' => 1,
+        ])->assertStatus(500)->assertJsonPath('success', false);
+        $this->assertNotEmpty($reference);
+        $response->assertJsonPath('reference', $reference);
+        $this->assertStringNotContainsString('SQLSTATE', $response->getContent());
+        $this->assertSame(0, Work::count());
+    }
+
     public function test_work_page_templates_compile_to_valid_php(): void
     {
         $compiler = app('blade.compiler');

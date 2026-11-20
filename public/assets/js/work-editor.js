@@ -21,10 +21,7 @@
     const release = url => {if (urls.delete(url)) URL.revokeObjectURL(url);};
     const error = (id, value) => {$(id).textContent = value || ''; $(id).classList.toggle('d-none', !value);};
     async function request(url, data, method = 'POST') {
-        const response = await fetch(url, {method, headers:{'X-CSRF-TOKEN':c.csrf,'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}, body:data});
-        let payload; try {payload = await response.json();} catch (_) {throw new Error(l.error);}
-        if (!response.ok || payload.success === false) throw new Error(payload.errors ? Object.values(payload.errors).flat().join('\n') : (payload.message || l.error));
-        return payload;
+        return WorkRequests.request(url, data, {method, csrf:c.csrf, labels:l});
     }
     function field(def, values) {
         const [name,key,type,required,options] = def, value = values[name] ?? '';

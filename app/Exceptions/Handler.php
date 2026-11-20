@@ -3,12 +3,13 @@
 namespace App\Exceptions;
 
 use App\Models\User;
-use Throwable;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Throwable;
 
 /**
  * @author Xanders
+ *
  * @see https://team.xsamtech.com/xanderssamoth
  */
 class Handler extends ExceptionHandler
@@ -74,10 +75,13 @@ class Handler extends ExceptionHandler
      */
     protected function unauthenticated($request, AuthenticationException $exception)
     {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => __('work_editor.session_expired')], 401);
+        }
         $is_api_request = $request->route()->getPrefix() == 'api';
 
         if ($is_api_request == false) {
-            $admins_exist = User::whereHas('roles', fn($q) => $q->where('roles.role_name', 'Administrateur'))->exists();
+            $admins_exist = User::whereHas('roles', fn ($q) => $q->where('roles.role_name', 'Administrateur'))->exists();
 
             return response()->view('auth.login', ['admins_exist' => $admins_exist]);
         }

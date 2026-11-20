@@ -1,6 +1,15 @@
 <?php
 
 return [
+    'network_error' => 'La connexion a été interrompue. Vérifiez votre connexion avant de réessayer.',
+    'session_expired' => 'Votre session a expiré. Rechargez la page et reconnectez-vous si nécessaire.',
+    'access_denied' => 'Vous n’avez pas l’autorisation d’effectuer cette opération.',
+    'route_missing' => 'La route d’enregistrement est introuvable. Vérifiez le déploiement des routes sur le serveur.',
+    'upload_too_large' => 'L’envoi dépasse la limite du serveur. Réduisez la taille ou le nombre de fichiers, ou augmentez les limites d’envoi du serveur.',
+    'server_error' => 'Le serveur n’a pas pu terminer l’enregistrement. Consultez les logs du serveur.',
+    'server_timeout' => 'Le serveur a mis trop de temps à répondre. Vérifiez si l’œuvre a été créée avant de réessayer.',
+    'unexpected_response' => 'Le serveur a renvoyé une réponse inattendue. Les détails sont disponibles dans la console du navigateur.',
+    'error_reference' => 'Référence',
     'add' => 'Ajouter une œuvre',
     'next' => 'Suivant',
     'back' => 'Précédent',

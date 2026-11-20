@@ -44,4 +44,5 @@
     <div id="workPageError" class="alert alert-danger d-none" role="alert"></div>
 </div>
 <script id="workEditorConfig" type="application/json">{!! json_encode($editorConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
-<script src="{{ asset('assets/js/work-editor.js') }}" defer></script>
+<script src="{{ asset('assets/js/work-requests.js') }}?v={{ filemtime(public_path('assets/js/work-requests.js')) }}" defer></script>
+<script src="{{ asset('assets/js/work-editor.js') }}?v={{ filemtime(public_path('assets/js/work-editor.js')) }}" defer></script>
